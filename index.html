@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="在庫管理">
+<link rel="icon" href="src/logo.png" type="image/png">
+<link rel="apple-touch-icon" href="src/logo.png">
+<title>在庫管理アプリ</title>
+<link rel="stylesheet" href="src/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header-top">
+      <div class="header-title-wrap">
+        <h1>在庫管理</h1>
+        <div class="header-sub" id="header-date"></div>
+      </div>
+      <div class="header-chip" id="header-user-chip">担当者 未設定</div>
+    </div>
+  </div>
+
+  <!-- Logo Section -->
+  <div class="logo-section">
+    <img src="src/logo.png" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+  </div>
+
+  <div class="dashboard">
+    <div class="hero-card">
+      <div class="hero-top">
+        <div>
+          <div class="hero-title">今日の在庫ダッシュボード</div>
+        </div>
+        <div class="hero-stamp" id="hero-stamp">更新中</div>
+      </div>
+      <div class="kpi-grid" id="dashboard-kpis"></div>
+    </div>
+  </div>
+
+  <div class="view-wrap">
+    <div id="view-store">
+      <div class="filter-toggle-wrap">
+        <button class="filter-toggle-btn" id="filter-toggle-store" onclick="toggleFilterPanel('store')">検索・並び替え <span class="arrow">▼</span></button>
+      </div>
+      <div class="filter-panel" id="filter-panel-store">
+        <div class="toolbar-row store-switch-row">
+          <button class="store-switch-btn" id="store-view-all" onclick="setStoreViewFilter('all')">すべて</button>
+          <button class="store-switch-btn" id="store-view-kagurazaka" onclick="setStoreViewFilter('神楽坂')">神楽坂だけ表示</button>
+          <button class="store-switch-btn" id="store-view-otokomae" onclick="setStoreViewFilter('男マエ食道')">男マエ食道だけ表示</button>
+        </div>
+        <div class="toolbar-row">
+          <select id="search-store" class="search-input" onchange="updateFilters()">
+            <option value="">商品名: すべて</option>
+          </select>
+          <select id="filter-category" class="toolbar-select" onchange="updateFilters()">
+            <option value="all">カテゴリ: すべて</option>
+            <option value="消耗品">カテゴリ: 消耗品</option>
+            <option value="ドリンク">カテゴリ: ドリンク</option>
+            <option value="食材">カテゴリ: 食材</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section-label">
+        <span>Store Inventory</span>
+        <span class="section-pill" id="store-count-pill">0件</span>
+      </div>
+      <div id="store-items" class="item-list"></div>
+      <div class="add-btn-wrap"><button class="add-btn" onclick="openModal({mode:'store'})">＋ 新規品目を追加する</button></div>
+      <div class="last-updated" id="last-updated-store"></div>
+    </div>
+
+    <div id="view-refill" style="display:none">
+      <div class="section-label">
+        <span>Refill List</span>
+        <span class="section-pill" id="refill-count-pill">0件</span>
+      </div>
+      <div id="refill-items" class="item-list"></div>
+    </div>
+
+    <div id="view-apt" style="display:none">
+      <div class="filter-toggle-wrap">
+        <button class="filter-toggle-btn" id="filter-toggle-apt" onclick="toggleFilterPanel('apt')">検索・並び替え <span class="arrow">▼</span></button>
+      </div>
+      <div class="filter-panel" id="filter-panel-apt">
+        <div class="toolbar-row">
+          <select id="search-apt" class="search-input" onchange="renderApt()">
+            <option value="">商品名: すべて</option>
+          </select>
+          <select id="filter-apt-category" class="toolbar-select" onchange="renderApt()">
+            <option value="all">カテゴリ: すべて</option>
+            <option value="消耗品">カテゴリ: 消耗品</option>
+            <option value="ドリンク">カテゴリ: ドリンク</option>
+            <option value="食材">カテゴリ: 食材</option>
+          </select>
+        </div>
+      </div>
+      <div class="section-label">
+        <span>Apartment Stock</span>
+        <span class="section-pill" id="apt-count-pill">0件</span>
+      </div>
+      <div id="apt-items" class="item-list"></div>
+      <div class="add-btn-wrap"><button class="add-btn" onclick="openModal({mode:'apt'})">＋ 新規品目を追加する</button></div>
+      <div class="last-updated" id="last-updated-apt"></div>
+    </div>
+
+    <div id="view-order" style="display:none">
+      <div class="section-label">
+        <span>🌐 ネット発注</span>
+        <span class="section-pill" id="order-count-pill">0件</span>
+      </div>
+      <div id="order-items" class="item-list"></div>
+    </div>
+
+    <div id="view-log" style="display:none">
+      <div class="section-label">
+        <span>History</span>
+        <span class="section-pill">最新50件</span>
+      </div>
+      <div id="log-items" class="item-list"></div>
+    </div>
+
+    <div id="view-shopping" style="display:none">
+      <div class="section-label">
+        <span>🛒 店頭購入（買い物リスト）</span>
+        <span class="section-pill" id="shopping-count-pill">0件</span>
+      </div>
+      <div id="shopping-items" class="item-list"></div>
+    </div>
+
+    <div id="view-settings" style="display:none">
+      <div class="section-label"><span>⚙️ 設定</span></div>
+      <div style="padding:16px 16px 32px">
+        <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">☁ クラウド同期（Supabase）</div>
+        <div style="color:#666;font-size:0.88em;margin-bottom:14px">
+          Supabase URL・Anon Key・ログイン情報を設定すると、複数人で同じ在庫をリアルタイム共有できます。
+        </div>
+        <div class="sync-panel-status" id="sync-status" style="margin-bottom:14px">未接続</div>
+
+        <div class="form-row">
+          <div class="form-label">Supabase URL</div>
+          <input class="form-input" id="cloud-url" type="text" placeholder="https://xxxxx.supabase.co">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Supabase Anon Key</div>
+          <textarea class="form-input" id="cloud-anon-key" rows="4" placeholder="eyJhbGciOi..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-label">ログインメール</div>
+          <input class="form-input" id="cloud-email" type="email" placeholder="example@example.com">
+        </div>
+        <div class="form-row">
+          <div class="form-label">パスワード</div>
+          <input class="form-input" id="cloud-password" type="password" placeholder="password">
+          <div class="form-help">入力した接続情報はこの端末に保存し、次回も自動でクラウド再接続します。</div>
+        </div>
+        <div style="margin-top:16px">
+          <button class="modal-submit" onclick="connectSupabase()">接続する</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item Edit Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">新規品目を追加</div>
+
+    <div class="form-row">
+      <div class="form-label">担当者名 *</div>
+      <input class="form-input" id="f-user" type="text" placeholder="例: 松浦">
+      <div class="form-help">履歴ログや補充ボタンの実行者として記録されます</div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-label">商品名 *</div>
+      <input class="form-input" id="f-name" type="text" maxlength="60" placeholder="例: コーラ（PET）">
+    </div>
+
+    <div class="form-row">
+      <div class="form-label">カテゴリ *</div>
+      <select class="form-select" id="f-category">
+        <option value="消耗品">消耗品</option>
+        <option value="ドリンク">ドリンク</option>
+        <option value="食材">食材</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <div class="form-label">単位 *</div>
+      <select class="form-select" id="f-unit">
+        <option value="">選択してください</option>
+        <option value="本">本</option>
+        <option value="袋">袋</option>
+        <option value="箱">箱</option>
+        <option value="ケース">ケース</option>
+        <option value="缶">缶</option>
+        <option value="個">個</option>
+        <option value="kg">kg</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <div class="form-label">最低在庫数 *</div>
+      <input class="form-input" id="f-min" type="number" inputmode="numeric" min="0" max="9999" placeholder="0">
+    </div>
+
+    <div class="form-row">
+      <div class="form-label">目標在庫数 *</div>
+      <input class="form-input" id="f-target" type="number" inputmode="numeric" min="1" max="9999" placeholder="最低在庫より大きい数">
+      <div class="form-help">自動発注数 = 目標在庫 - 現在在庫</div>
+    </div>
+
+    <div class="form-row" id="f-stores-row">
+      <div class="form-label">対象店舗（複数選択可）*</div>
+      <div class="store-checks">
+        <div class="store-check checked" id="chk-神楽坂" onclick="toggleStore('神楽坂')">神楽坂</div>
+        <div class="store-check checked" id="chk-男マエ食道" onclick="toggleStore('男マエ食道')">男マエ食道</div>
+      </div>
+    </div>
+
+    <div id="f-store-order-fields">
+      <div class="form-row">
+        <div class="form-label">発注先</div>
+        <input class="form-input" id="f-store-supplier" type="text" placeholder="例: アマゾン">
+      </div>
+      <div class="form-row">
+        <div class="form-label">発注先URL</div>
+        <input class="form-input" id="f-store-url" type="url" placeholder="https://...">
+      </div>
+      <div class="form-row">
+        <div class="form-label">固定発注数（空欄なら自動計算）</div>
+        <input class="form-input" id="f-store-order" type="number" inputmode="numeric" min="0" max="9999" placeholder="0">
+      </div>
+    </div>
+
+    <div id="f-apt-fields" style="display:none">
+      <div class="form-row">
+        <div class="form-label">仕入先</div>
+        <input class="form-input" id="f-supplier" type="text" placeholder="例: アマゾン">
+      </div>
+      <div class="form-row">
+        <div class="form-label">仕入先URL</div>
+        <input class="form-input" id="f-url" type="url" placeholder="https://...">
+      </div>
+      <div class="form-row">
+        <div class="form-label">固定発注数（空欄なら自動計算）</div>
+        <input class="form-input" id="f-order" type="number" inputmode="numeric" min="0" max="9999" placeholder="0">
+      </div>
+    </div>
+
+    <div class="form-row" id="f-stock-row">
+      <div class="form-label">初期在庫数</div>
+      <input class="form-input" id="f-stock" type="number" inputmode="numeric" min="0" max="9999" placeholder="0">
+    </div>
+
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">キャンセル</button>
+      <button class="modal-submit" id="modal-submit-btn" onclick="submitModal()">追加する</button>
+    </div>
+
+    <div id="delete-section" style="display:none">
+      <hr class="modal-divider">
+      <button class="modal-delete" onclick="deleteItem()">この品目を削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quantity Edit Modal -->
+<div class="modal-overlay" id="qty-modal-overlay" onclick="closeQtyModalOutside(event)">
+  <div class="modal">
+    <div class="modal-title" id="qty-modal-title">在庫数を変更</div>
+    <div class="qty-modal-value"><input class="qty-modal-input" id="qty-modal-input" type="number" inputmode="numeric" min="0" max="9999"></div>
+    <div class="qty-modal-unit" id="qty-modal-unit">個</div>
+    <div class="qty-modal-actions">
+      <button class="qty-modal-btn" onclick="stepQtyModal(-1)">−</button>
+      <button class="qty-modal-btn" onclick="stepQtyModal(1)">＋</button>
+    </div>
+    <div class="qty-modal-meta" id="qty-modal-meta"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeQtyModal()">キャンセル</button>
+      <button class="modal-submit" onclick="saveQtyModal()">変更を保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transfer Confirm Modal -->
+<div class="modal-overlay" id="transfer-confirm-overlay" onclick="closeTransferConfirmOutside(event)">
+  <div class="modal">
+    <div class="modal-title">📦 補充の確認</div>
+    <div id="transfer-confirm-body"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeTransferConfirm()">キャンセル</button>
+      <button class="modal-submit" onclick="executeTransferConfirm()">補充する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Shopping Store Select Modal -->
+<div class="modal-overlay" id="shopping-store-select-overlay">
+  <div class="modal">
+    <div class="modal-title">🏪 店舗に直接補充</div>
+    <div id="shopping-store-select-body"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeShoppingStoreSelect()">キャンセル</button>
+      <button class="modal-submit" id="shopping-dist-submit" onclick="confirmShoppingDistribution()" disabled>補充する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Tab Bar -->
+<div class="bottom-tab-bar" id="bottom-tab-bar">
+  <div class="tab-bar">
+    <div class="tab active" onclick="showTab('store')" id="tab-store"><span class="tab-icon">🏪</span><span class="tab-text">店舗</span></div>
+    <div class="tab" onclick="showTab('refill')" id="tab-refill"><span class="tab-icon">📦</span><span class="tab-text">補充</span></div>
+    <div class="tab" onclick="showTab('apt')" id="tab-apt"><span class="tab-icon">🏠</span><span class="tab-text">アパート</span></div>
+    <div class="tab" onclick="showTab('order')" id="tab-order"><span class="tab-icon">🌐</span><span class="tab-text">発注</span></div>
+    <div class="tab" onclick="showTab('shopping')" id="tab-shopping"><span class="tab-icon">🛍</span><span class="tab-text">買い物</span></div>
+    <div class="tab" onclick="showTab('log')" id="tab-log"><span class="tab-icon">🕘</span><span class="tab-text">履歴</span></div>
+    <div class="tab" onclick="showTab('settings')" id="tab-settings"><span class="tab-icon">⚙️</span><span class="tab-text">設定</span></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Undo Bar -->
+<div class="undo-bar" id="undo-bar">
+  <div class="undo-card">
+    <div class="undo-title">補充を実行しました</div>
+    <div class="undo-text" id="undo-text"></div>
+    <div class="undo-actions">
+      <button class="undo-btn primary" onclick="undoLastTransfer()">やり直す</button>
+      <button class="undo-btn secondary" onclick="dismissUndo()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script src="src/main.js"></script>
+</body>
+</html>
