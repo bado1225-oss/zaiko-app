@@ -503,7 +503,8 @@ let shoppingDirectPending = null;
 
 function updateHeaderUser(){
   const user = localStorage.getItem('inv_user') || '未設定';
-  document.getElementById('header-user-chip').textContent = '担当者 ' + user;
+  const el = document.getElementById('header-user-chip');
+  if(el) el.textContent = '担当者 ' + user;
 }
 function setLastSaved(suffix, tsKey){
   const ts = localStorage.getItem(tsKey);

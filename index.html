@@ -6,10 +6,13 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="在庫管理">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link rel="icon" href="src/logo.png" type="image/png">
 <link rel="apple-touch-icon" href="src/logo.png">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css">
+<link rel="stylesheet" href="src/style.css?v=20260420b">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -20,7 +23,10 @@
         <h1>在庫管理</h1>
         <div class="header-sub" id="header-date"></div>
       </div>
-      <div class="header-chip" id="header-user-chip">担当者 未設定</div>
+      <div class="header-actions">
+        <button class="header-icon-btn" onclick="showTab('log')" aria-label="履歴" title="履歴">🕘</button>
+        <button class="header-icon-btn" onclick="showTab('settings')" aria-label="設定" title="設定">⚙️</button>
+      </div>
     </div>
   </div>
 
@@ -319,8 +325,6 @@
     <div class="tab active" onclick="showTab('store')" id="tab-store"><span class="tab-icon">🏪</span><span class="tab-text">店舗</span></div>
     <div class="tab" onclick="showTab('apt')" id="tab-apt"><span class="tab-icon">🏠</span><span class="tab-text">アパート</span></div>
     <div class="tab" onclick="showTab('shopping')" id="tab-shopping"><span class="tab-icon">🛍</span><span class="tab-text">買い物</span></div>
-    <div class="tab" onclick="showTab('log')" id="tab-log"><span class="tab-icon">🕘</span><span class="tab-text">履歴</span></div>
-    <div class="tab" onclick="showTab('settings')" id="tab-settings"><span class="tab-icon">⚙️</span><span class="tab-text">設定</span></div>
   </div>
 </div>
 
@@ -339,6 +343,6 @@
   </div>
 </div>
 
-<script src="src/main.js"></script>
+<script src="src/main.js?v=20260420b"></script>
 </body>
 </html>
