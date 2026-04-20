@@ -303,8 +303,8 @@ async function reloadAllFromSupabase(){
       category: ref?.category || '消耗品',
       unit: ref?.unit || '個',
       stock: r.quantity,
-      min: ref?.min || 0,
-      target: ref?.target || 1,
+      min: (r.min_stock ?? ref?.min) ?? 0,
+      target: (r.target_stock ?? ref?.target) ?? 1,
       supplier: ref?.supplier || '—',
       supplierUrl: ref?.supplierUrl || '',
       orderQty: ref?.orderQty ?? null
@@ -410,13 +410,14 @@ async function cloudUpdateItem(item, mode='upsert'){
     name: item.name,
     category: item.category,
     unit: item.unit,
-    min_stock: item.min,
-    target_stock: item.target,
     supplier: item.supplier || null,
     supplier_url: item.supplierUrl || null,
     fixed_order_qty: item.orderQty ?? null,
     is_active: mode === 'delete' ? false : true
   };
+  // min/target は明示指定された場合のみ items テーブルに反映(アパート編集時は未指定にして店舗値を保持)
+  if(item.min !== undefined && item.min !== null)    payload.min_stock    = item.min;
+  if(item.target !== undefined && item.target !== null) payload.target_stock = item.target;
   const { data, error } = await supabaseClient.from('items').upsert(payload).select().single();
   if(error) throw error;
   item.id = data.id;
@@ -479,9 +480,10 @@ async function cloudUpsertApartment(itemName){
     itemId = await cloudUpdateItem(item, 'upsert');
   }
   const qty = apt?.stock ?? 0;
-  const { error } = await supabaseClient.from('apartment_inventory').upsert({
-    item_id:itemId, quantity:qty, updated_by:currentAuthUser.id
-  }, { onConflict: 'item_id' });
+  const payload = { item_id:itemId, quantity:qty, updated_by:currentAuthUser.id };
+  if(apt && Number.isFinite(apt.min))    payload.min_stock    = apt.min;
+  if(apt && Number.isFinite(apt.target)) payload.target_stock = apt.target;
+  const { error } = await supabaseClient.from('apartment_inventory').upsert(payload, { onConflict: 'item_id' });
   if(error) throw error;
 }
 
@@ -2060,6 +2062,19 @@ function openModal(opts){
   document.getElementById('f-stores-row').style.display = opts.mode === 'store' ? 'block' : 'none';
   document.getElementById('f-store-order-fields').style.display = opts.mode === 'store' ? 'block' : 'none';
   document.getElementById('f-apt-fields').style.display = opts.mode === 'apt' ? 'block' : 'none';
+  // モードに応じて「最低在庫数」「目標在庫数」のラベル/ヒントを切替
+  const minLabel = document.getElementById('f-min-label');
+  const targetLabel = document.getElementById('f-target-label');
+  const minHelp = document.getElementById('f-min-help');
+  if(opts.mode === 'apt'){
+    if(minLabel)    minLabel.textContent    = 'アパートの最低在庫数 *';
+    if(targetLabel) targetLabel.textContent = 'アパートの目標在庫数 *';
+    if(minHelp)     minHelp.textContent     = 'アパート在庫の発注判定に使われます(店舗側の値とは独立)';
+  }else{
+    if(minLabel)    minLabel.textContent    = '店舗の最低在庫数 *';
+    if(targetLabel) targetLabel.textContent = '店舗の目標在庫数 *';
+    if(minHelp)     minHelp.textContent     = '店舗在庫の補充判定に使われます(アパート側の値とは独立)';
+  }
   document.getElementById('f-stock-row').style.display = isEdit ? 'none' : 'block';
   document.getElementById('delete-section').style.display = isEdit ? 'block' : 'none';
   document.getElementById('modal-submit-btn').textContent = isEdit ? '変更を保存する' : '追加する';
@@ -2298,17 +2313,22 @@ async function submitModal(){
 
       if(isCloudReady()){
         try{
-          const id = await cloudUpdateItem({
+          // 店舗にも存在する品目の場合は items テーブルの min/target を上書きしない(店舗側の値を保持)
+          const isSharedWithStore = ITEMS.some(i => i.name === name);
+          const cloudPayload = {
             id: item.itemId || itemIdByName[name],
             name: item.name,
             category: item.category,
             unit: item.unit,
-            min: item.min,
-            target: item.target,
             supplier: item.supplier,
             supplierUrl: item.supplierUrl,
             orderQty: item.orderQty
-          }, 'upsert');
+          };
+          if(!isSharedWithStore){
+            cloudPayload.min = item.min;
+            cloudPayload.target = item.target;
+          }
+          const id = await cloudUpdateItem(cloudPayload, 'upsert');
           item.itemId = id;
           itemIdByName[item.name] = id;
           await cloudUpsertApartment(item.name);
@@ -2338,16 +2358,21 @@ async function submitModal(){
 
       if(isCloudReady()){
         try{
-          const id = await cloudUpdateItem({
+          // 店舗にも存在する品目の場合は items テーブルの min/target を上書きしない
+          const isSharedWithStore = ITEMS.some(i => i.name === newAptItem.name);
+          const cloudPayload = {
             name: newAptItem.name,
             category: newAptItem.category,
             unit: newAptItem.unit,
-            min: newAptItem.min,
-            target: newAptItem.target,
             supplier: newAptItem.supplier,
             supplierUrl: newAptItem.supplierUrl,
             orderQty: newAptItem.orderQty
-          }, 'upsert');
+          };
+          if(!isSharedWithStore){
+            cloudPayload.min = newAptItem.min;
+            cloudPayload.target = newAptItem.target;
+          }
+          const id = await cloudUpdateItem(cloudPayload, 'upsert');
           newAptItem.itemId = id;
           itemIdByName[newAptItem.name] = id;
           await cloudUpsertApartment(newAptItem.name);

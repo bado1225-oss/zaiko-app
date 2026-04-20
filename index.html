@@ -12,7 +12,7 @@
 <link rel="icon" href="src/logo.png" type="image/png">
 <link rel="apple-touch-icon" href="src/logo.png">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260420b">
+<link rel="stylesheet" href="src/style.css?v=20260420c">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -212,12 +212,13 @@
     </div>
 
     <div class="form-row">
-      <div class="form-label">最低在庫数 *</div>
+      <div class="form-label" id="f-min-label">最低在庫数 *</div>
       <input class="form-input" id="f-min" type="number" inputmode="numeric" min="0" max="9999" placeholder="0">
+      <div class="form-help" id="f-min-help"></div>
     </div>
 
     <div class="form-row">
-      <div class="form-label">目標在庫数 *</div>
+      <div class="form-label" id="f-target-label">目標在庫数 *</div>
       <input class="form-input" id="f-target" type="number" inputmode="numeric" min="1" max="9999" placeholder="最低在庫より大きい数">
       <div class="form-help">自動発注数 = 目標在庫 - 現在在庫</div>
     </div>
@@ -343,6 +344,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260420b"></script>
+<script src="src/main.js?v=20260420c"></script>
 </body>
 </html>
