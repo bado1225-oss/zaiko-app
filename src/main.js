@@ -1051,12 +1051,12 @@ function dashboardStats(){
 function renderDashboard(){
   const s = dashboardStats();
   document.getElementById('dashboard-kpis').innerHTML = `
-    <div class="kpi-card danger">
+    <div class="kpi-card danger" onclick="showTab('refill')" style="cursor:pointer">
       <div class="kpi-label">補充必要</div>
       <div class="kpi-value">${s.refillCount}</div>
       <div class="kpi-sub">店舗側の不足</div>
     </div>
-    <div class="kpi-card warning">
+    <div class="kpi-card warning" onclick="showTab('order')" style="cursor:pointer">
       <div class="kpi-label">発注必要</div>
       <div class="kpi-value">${s.aptOrderCount}</div>
       <div class="kpi-sub">アパート在庫</div>
@@ -1098,8 +1098,10 @@ function showTab(tab){
     return;
   }
   ['store','refill','apt','order','log','shopping','settings'].forEach(t => {
-    document.getElementById('view-' + t).style.display = t === tab ? 'block' : 'none';
-    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+    const view = document.getElementById('view-' + t);
+    if(view) view.style.display = t === tab ? 'block' : 'none';
+    const tabEl = document.getElementById('tab-' + t);
+    if(tabEl) tabEl.classList.toggle('active', t === tab);
   });
   // Render the selected tab
   if(tab === 'store') renderStore();
@@ -1394,12 +1396,10 @@ function makeOrderCard({scope,name,unit,min,target,supplier,supplierUrl,orderQty
 }
 function renderOrder(){
   const c = document.getElementById('order-items');
-  const storeList = ITEMS.filter(item => getTotal(item) <= item.min && item.supplierUrl);
   const aptList = aptStock.filter(item => item.stock <= item.min && item.supplierUrl);
   // Auto-clear orderChecks for items no longer in the order list
   const _visibleKeys = new Set(
-    storeList.map(i => orderCheckKey('店舗不足', i.name))
-    .concat(aptList.map(i => orderCheckKey('アパート発注', i.name)))
+    aptList.map(i => orderCheckKey('アパート発注', i.name))
   );
   const _nowStale = [];
   Object.keys(orderChecks).forEach(key => {
@@ -1427,41 +1427,17 @@ function renderOrder(){
     });
     persist('inv_order_checks_v1', orderChecks);
   }
-  document.getElementById('order-count-pill').textContent = (storeList.length + aptList.length) + '件';
-  if(!storeList.length && !aptList.length){
+  document.getElementById('order-count-pill').textContent = aptList.length + '件';
+  if(!aptList.length){
     c.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>ネット発注が必要な商品はありません</div>';
     return;
   }
-  let html = '';
-  if(storeList.length){
-    html += `<div class="order-section-label">🌐 ネット発注（店舗）</div>`;
-    html += storeList.map(item => {
-      const total = getTotal(item);
-      const transfer = getTransferSuggestion(item);
-      const currentAfterTransfer = transfer ? total + getTransferPlanTotal(item, transfer) : total;
-      const plannedTransfer = transfer ? getTransferPlanTotal(item, transfer) : 0;
-      const remainingShortageAfterPlan = transfer ? Math.max(0, transfer.shortage - plannedTransfer) : 0;
-      const transferText = transfer
-        ? `配分補充で <strong>${plannedTransfer}${item.unit}</strong> を店舗へ移せます。${remainingShortageAfterPlan > 0 ? ` 補充後も ${remainingShortageAfterPlan}${item.unit} 不足します。` : ' 補充だけで最低在庫を超えます。'}`
-        : `アパート在庫で補充できないため、そのまま発注対象です。`;
-      const transferButtonHtml = transfer ? `${getTransferBoxHtml(item).replace('発注を見る','店舗で確認')}` : '';
-      return makeOrderCard({
-        scope:'店舗不足',
-        name:item.name, unit:item.unit, min:item.min, target:getTarget(item),
-        supplier:item.supplier, supplierUrl:item.supplierUrl, orderQty:item.orderQty,
-        currentStock:currentAfterTransfer, category:item.category, transferText, transferButtonHtml
-      });
-    }).join('');
-  }
-  if(aptList.length){
-    html += `<div class="order-section-label">🌐 ネット発注（アパート）</div>`;
-    html += aptList.map(item => makeOrderCard({
-      scope:'アパート発注',
-      name:item.name, unit:item.unit, min:item.min, target:getTarget(item),
-      supplier:item.supplier, supplierUrl:item.supplierUrl, orderQty:item.orderQty,
-      currentStock:item.stock, category:item.category, transferText:''
-    })).join('');
-  }
+  const html = aptList.map(item => makeOrderCard({
+    scope:'アパート発注',
+    name:item.name, unit:item.unit, min:item.min, target:getTarget(item),
+    supplier:item.supplier, supplierUrl:item.supplierUrl, orderQty:item.orderQty,
+    currentStock:item.stock, category:item.category, transferText:''
+  })).join('');
   c.innerHTML = html;
 }
 
