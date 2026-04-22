@@ -1234,7 +1234,10 @@ function renderStoreCard(item, focusStoreName=null){
         <span class="qty-unit">${item.unit}</span>
         ${checkedMeta}
         <button class="check-btn-store ${checked ? 'checked' : ''}" aria-label="${store} ${item.name} の確認状態" title="${checked ? '確認済み' : '未確認'}" onclick="toggleStoreChecked('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}')"></button>
-        <button class="change-btn" onclick="openQtyModal({mode:'store',name:'${encodeURIComponent(item.name)}',store:'${encodeURIComponent(store)}'})">変更</button>
+        <span class="qty-step-group">
+          <button class="qty-step-btn minus" ${v <= 0 ? 'disabled' : ''} aria-label="${store} の ${item.name} を -1" onclick="quickIncStore('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}',-1)">−</button>
+          <button class="qty-step-btn plus" aria-label="${store} の ${item.name} を +1" onclick="quickIncStore('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}',1)">＋</button>
+        </span>
       </div>
     </div>`;
   }).join('');
@@ -1518,7 +1521,10 @@ function renderApt(){
         <div class="qty-display">
           <span class="qty-val ${statusClassForTotal(item.stock,item.min)}" id="AV_${i}">${item.stock}</span>
           <span class="qty-unit">${item.unit}</span>
-          <button class="change-btn" onclick="openQtyModal({mode:'apt',idx:${i}})">変更</button>
+          <span class="qty-step-group">
+            <button class="qty-step-btn minus" ${item.stock <= 0 ? 'disabled' : ''} aria-label="アパート ${item.name} を -1" onclick="quickIncApt(${i},-1)">−</button>
+            <button class="qty-step-btn plus" aria-label="アパート ${item.name} を +1" onclick="quickIncApt(${i},1)">＋</button>
+          </span>
         </div>
       </div>
     </div>`;
@@ -1971,6 +1977,20 @@ function closeQtyModalOutside(e){
 let lastQtyStepAt = 0;
 const QTY_STEP_DEBOUNCE_MS = 60;
 const QTY_LARGE_CHANGE_THRESHOLD = 10;
+function quickIncStore(encName, encStore, delta){
+  const now = Date.now();
+  if(now - lastQtyStepAt < QTY_STEP_DEBOUNCE_MS) return;
+  lastQtyStepAt = now;
+  const name = decodeURIComponent(encName);
+  const store = decodeURIComponent(encStore);
+  chStore(name, store, delta).catch(e => console.error('quickIncStore:', e));
+}
+function quickIncApt(idx, delta){
+  const now = Date.now();
+  if(now - lastQtyStepAt < QTY_STEP_DEBOUNCE_MS) return;
+  lastQtyStepAt = now;
+  chApt(idx, delta).catch(e => console.error('quickIncApt:', e));
+}
 function stepQtyModal(delta){
   const now = Date.now();
   if(now - lastQtyStepAt < QTY_STEP_DEBOUNCE_MS) return;
