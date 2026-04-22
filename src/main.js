@@ -2091,6 +2091,8 @@ async function saveQtyModal(){
     const key = decodeURIComponent(qtyModalState.name) + '|' + decodeURIComponent(qtyModalState.store);
     shoppingQtyOverrides[key] = nextValue;
     renderShopping();
+    // 発注タブから編集した場合、ボタンの onclick に焼き付いた旧 qty が残らないよう再描画
+    if(document.getElementById('view-order').style.display !== 'none') renderOrder();
     closeQtyModal();
     toast('✓ 仕入れ数を変更しました');
     return;
@@ -2870,7 +2872,10 @@ async function shoppingPurchase(encodedName, encodedScope, qty, unit){
   var scope  = decodeURIComponent(encodedScope);
   var user   = ensureActionUser();
   if(!user) return;
-  var numQty = Number(qty);
+  // 最新の編集値を優先(ボタンの onclick に焼き付いた qty が古いケースに備える)
+  var overrideKey = name + '|' + scope;
+  var overrideQty = shoppingQtyOverrides[overrideKey];
+  var numQty = Number.isFinite(overrideQty) ? Number(overrideQty) : Number(qty);
   if(numQty <= 0){ alert('仕入れ数が0です。編集ボタンで変更してください。'); return; }
 
   var idx = aptStock.findIndex(function(a){ return a.name === name; });
