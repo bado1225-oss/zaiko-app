@@ -1161,17 +1161,29 @@ function sortItems(items, sortValue){
   }
   return arr;
 }
+function isStoreItemFullyChecked(item){
+  // 現在の店舗表示フィルタで見えている店舗がすべてチェック済みかを判定
+  const relevantStores = (storeViewFilter === 'all' ? STORES : [storeViewFilter])
+    .filter(s => item.stores.includes(s));
+  if(relevantStores.length === 0) return false;
+  return relevantStores.every(s => isStoreChecked(item.name, s));
+}
 function filteredStoreItems(){
   populateStoreSearch();
   const q = (document.getElementById('search-store')?.value || '').trim().toLowerCase();
   const category = document.getElementById('filter-category')?.value || 'all';
+  const checkVisibility = document.getElementById('filter-check-visibility')?.value || 'unchecked';
   const sortValue = document.getElementById('sort-store')?.value || '不足順';
   let list = ITEMS.filter(item => {
     const matchesQ = !q || item.name.toLowerCase().includes(q);
     const matchesCategory = category === 'all' || item.category === category;
     const matchesQuick = quickFilter === 'all' ||
       (quickFilter === 'danger' ? getTotal(item) <= item.min : item.category === quickFilter);
-    return matchesQ && matchesCategory && matchesQuick;
+    const fullyChecked = isStoreItemFullyChecked(item);
+    const matchesVisibility = checkVisibility === 'all'
+      || (checkVisibility === 'unchecked' && !fullyChecked)
+      || (checkVisibility === 'checked' && fullyChecked);
+    return matchesQ && matchesCategory && matchesQuick && matchesVisibility;
   });
   return sortItems(list, sortValue);
 }

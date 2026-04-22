@@ -11,12 +11,12 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260420d">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260420d">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260420d">
-<link rel="manifest" href="manifest.webmanifest?v=20260420d">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260420e">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260420e">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260420e">
+<link rel="manifest" href="manifest.webmanifest?v=20260420e">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260420d">
+<link rel="stylesheet" href="src/style.css?v=20260420e">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,7 +36,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section">
-    <img src="icons/icon-512.png?v=20260420d" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260420e" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -71,6 +71,11 @@
             <option value="消耗品">カテゴリ: 消耗品</option>
             <option value="ドリンク">カテゴリ: ドリンク</option>
             <option value="食材">カテゴリ: 食材</option>
+          </select>
+          <select id="filter-check-visibility" class="toolbar-select" onchange="updateFilters()">
+            <option value="unchecked" selected>表示: 未チェックのみ</option>
+            <option value="all">表示: すべて</option>
+            <option value="checked">表示: チェック済みのみ</option>
           </select>
         </div>
       </div>
@@ -348,6 +353,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260420d"></script>
+<script src="src/main.js?v=20260420e"></script>
 </body>
 </html>
