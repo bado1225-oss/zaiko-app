@@ -283,6 +283,12 @@ a{color:inherit}
 .qty-val{
   min-width:34px;text-align:center;font-size:22px;font-weight:800;color:var(--text);
 }
+.qty-val.tappable{
+  cursor:pointer;border-bottom:1.5px dashed rgba(32,58,90,.25);
+  padding:2px 4px;border-radius:6px;touch-action:manipulation;
+  transition:background .15s;
+}
+.qty-val.tappable:active{background:rgba(32,58,90,.08)}
 .qty-unit{font-size:12px;color:var(--muted)}
 .change-btn{min-height:40px;padding:10px 14px;border-radius:12px;background:#f4efe8;border:1px solid var(--line);color:var(--navy);font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 6px 14px rgba(32,58,90,.05)}
 .change-btn:active{transform:scale(.98)}

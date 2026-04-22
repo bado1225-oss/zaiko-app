@@ -856,7 +856,7 @@ function updateStoreCardUI(name){
     if(qtyEl && item){
       const sv = storeStock[name]?.[storeName] ?? 0;
       qtyEl.textContent = sv;
-      if(item.stores.includes(storeName)) qtyEl.className = `qty-val ${storeQtyStatusClass(sv, item)}`;
+      if(item.stores.includes(storeName)) qtyEl.className = `qty-val tappable ${storeQtyStatusClass(sv, item)}`;
     }
   });
   card.className = `item-card ${statusClassForCard(total,item.min)}`;
@@ -1230,7 +1230,7 @@ function renderStoreCard(item, focusStoreName=null){
     return `<div class="store-row">
       <div class="store-left"><div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item)}"></span>${store}</div></div>
       <div class="store-row-right">
-        <span class="qty-val ${storeQtyStatusClass(v, item)}" id="${eid(item.name, store)}">${v}</span>
+        <span class="qty-val tappable ${storeQtyStatusClass(v, item)}" id="${eid(item.name, store)}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'store',name:'${encodeURIComponent(item.name)}',store:'${encodeURIComponent(store)}'})">${v}</span>
         <span class="qty-unit">${item.unit}</span>
         ${checkedMeta}
         <button class="check-btn-store ${checked ? 'checked' : ''}" aria-label="${store} ${item.name} の確認状態" title="${checked ? '確認済み' : '未確認'}" onclick="toggleStoreChecked('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}')"></button>
@@ -1465,7 +1465,7 @@ function updateAptCardUI(index){
   const autoOrderEl = document.getElementById('AO_' + index);
   const recommended = getAutoOrderQty(item.stock, item.min, getTarget(item), item.orderQty);
 
-  if(valueEl){ valueEl.textContent = item.stock; valueEl.className = `qty-val ${statusClassForTotal(item.stock,item.min)}`; }
+  if(valueEl){ valueEl.textContent = item.stock; valueEl.className = `qty-val tappable ${statusClassForTotal(item.stock,item.min)}`; }
   if(autoOrderEl) autoOrderEl.textContent = recommended;
   if(badgeEl){
     badgeEl.textContent = getStatusText(item.stock, item.min);
@@ -1519,7 +1519,7 @@ function renderApt(){
           <div class="small-note">自動発注数: <strong><span id="AO_${i}">${recommended}</span> ${item.unit}</strong></div>
         </div>
         <div class="qty-display">
-          <span class="qty-val ${statusClassForTotal(item.stock,item.min)}" id="AV_${i}">${item.stock}</span>
+          <span class="qty-val tappable ${statusClassForTotal(item.stock,item.min)}" id="AV_${i}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'apt',idx:${i}})">${item.stock}</span>
           <span class="qty-unit">${item.unit}</span>
           <span class="qty-step-group">
             <button class="qty-step-btn minus" ${item.stock <= 0 ? 'disabled' : ''} aria-label="アパート ${item.name} を -1" onclick="quickIncApt(${i},-1)">−</button>
