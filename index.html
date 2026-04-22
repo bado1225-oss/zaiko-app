@@ -11,12 +11,12 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260422d">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260422d">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260422d">
-<link rel="manifest" href="manifest.webmanifest?v=20260422d">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260422e">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260422e">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260422e">
+<link rel="manifest" href="manifest.webmanifest?v=20260422e">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260422d">
+<link rel="stylesheet" href="src/style.css?v=20260422e">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,7 +36,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section">
-    <img src="icons/icon-512.png?v=20260422d" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260422e" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -49,6 +49,11 @@
       </div>
       <div class="kpi-grid" id="dashboard-kpis"></div>
     </div>
+  </div>
+
+  <div class="main-segment-tabs">
+    <button class="main-segment-btn active" id="seg-store" onclick="showTab('store')"><span class="seg-icon">🏪</span>店舗</button>
+    <button class="main-segment-btn" id="seg-apt" onclick="showTab('apt')"><span class="seg-icon">🏠</span>アパート</button>
   </div>
 
   <div class="view-wrap">
@@ -342,12 +347,25 @@
   </div>
 </div>
 
-<!-- Bottom Tab Bar -->
-<div class="bottom-tab-bar" id="bottom-tab-bar">
-  <div class="tab-bar">
-    <div class="tab active" onclick="showTab('store')" id="tab-store"><span class="tab-icon">🏪</span><span class="tab-text">店舗</span></div>
-    <div class="tab" onclick="showTab('apt')" id="tab-apt"><span class="tab-icon">🏠</span><span class="tab-text">アパート</span></div>
-    <div class="tab" onclick="showTab('shopping')" id="tab-shopping"><span class="tab-icon">🛍</span><span class="tab-text">買い物</span></div>
+<!-- Order Choice Modal (発注必要カードから起動) -->
+<div class="modal-overlay" id="order-choice-overlay" onclick="closeOrderChoiceOutside(event)">
+  <div class="modal order-choice-modal">
+    <div class="modal-title">発注方法を選んでください</div>
+    <div class="order-choice-grid">
+      <button class="order-choice-btn web" onclick="chooseOrderMode('order')">
+        <span class="order-choice-icon">🌐</span>
+        <span class="order-choice-label">ネット発注</span>
+        <span class="order-choice-desc">URL登録済みの商品</span>
+      </button>
+      <button class="order-choice-btn shop" onclick="chooseOrderMode('shopping')">
+        <span class="order-choice-icon">🛍</span>
+        <span class="order-choice-label">買い物</span>
+        <span class="order-choice-desc">店頭購入で仕入れる商品</span>
+      </button>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeOrderChoice()">閉じる</button>
+    </div>
   </div>
 </div>
 
@@ -366,6 +384,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260422d"></script>
+<script src="src/main.js?v=20260422e"></script>
 </body>
 </html>

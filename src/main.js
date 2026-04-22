@@ -1111,12 +1111,12 @@ function dashboardStats(){
 function renderDashboard(){
   const s = dashboardStats();
   document.getElementById('dashboard-kpis').innerHTML = `
-    <div class="kpi-card danger" onclick="showTab('refill')" style="cursor:pointer">
+    <div class="kpi-card danger" onclick="showTab('refill')" style="cursor:pointer" role="button" tabindex="0">
       <div class="kpi-label">補充必要</div>
       <div class="kpi-value">${s.refillCount}</div>
       <div class="kpi-sub">店舗側の不足</div>
     </div>
-    <div class="kpi-card warning" onclick="showTab('order')" style="cursor:pointer">
+    <div class="kpi-card warning" onclick="showOrderChoice()" style="cursor:pointer" role="button" tabindex="0">
       <div class="kpi-label">発注必要</div>
       <div class="kpi-value">${s.aptOrderCount}</div>
       <div class="kpi-sub">アパート在庫</div>
@@ -1151,9 +1151,9 @@ function setQuickFilter(val){
   renderApt();
 }
 function showTab(tab){
-  // If already on this tab, scroll to top
-  const currentTab = document.getElementById('tab-' + tab);
-  if(currentTab && currentTab.classList.contains('active')){
+  // セグメントタブを再度タップされた場合はトップへスクロール
+  const seg = document.getElementById('seg-' + tab);
+  if(seg && seg.classList.contains('active')){
     window.scrollTo({top:0, behavior:'smooth'});
     return;
   }
@@ -1163,13 +1163,31 @@ function showTab(tab){
     const tabEl = document.getElementById('tab-' + t);
     if(tabEl) tabEl.classList.toggle('active', t === tab);
   });
-  // Render the selected tab
+  // セグメントタブ(店舗/アパートのみ)の active 表示を同期
+  ['store','apt'].forEach(t => {
+    const segEl = document.getElementById('seg-' + t);
+    if(segEl) segEl.classList.toggle('active', t === tab);
+  });
+  // 選択されたタブを描画
   if(tab === 'store') renderStore();
   if(tab === 'apt') renderApt();
   if(tab === 'refill') renderRefill();
   if(tab === 'order') renderOrder();
   if(tab === 'log') renderLogs();
   if(tab === 'shopping') renderShopping();
+}
+function showOrderChoice(){
+  document.getElementById('order-choice-overlay').classList.add('open');
+}
+function closeOrderChoice(){
+  document.getElementById('order-choice-overlay').classList.remove('open');
+}
+function closeOrderChoiceOutside(e){
+  if(e.target === document.getElementById('order-choice-overlay')) closeOrderChoice();
+}
+function chooseOrderMode(tab){
+  closeOrderChoice();
+  showTab(tab);
 }
 function populateStoreSearch(){
   const sel = document.getElementById('search-store');

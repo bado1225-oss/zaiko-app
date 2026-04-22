@@ -146,7 +146,25 @@ a{color:inherit}
   color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--navy),var(--navy-2));
 }
 
-.view-wrap{padding-top:6px;padding-bottom:70px}
+.view-wrap{padding-top:6px;padding-bottom:30px}
+.main-segment-tabs{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+  padding:0 16px 10px;
+}
+.main-segment-btn{
+  min-height:52px;padding:10px 12px;border-radius:16px;
+  background:var(--surface);border:1.5px solid var(--line);
+  color:#7c7266;font-size:14px;font-weight:800;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:var(--shadow);transition:all .15s;
+  touch-action:manipulation;
+}
+.main-segment-btn .seg-icon{font-size:18px}
+.main-segment-btn.active{
+  color:#fff;border-color:transparent;
+  background:linear-gradient(135deg,var(--navy),var(--navy-2));
+}
+.main-segment-btn:active{transform:scale(.98)}
 .toolbar{
   padding:10px 16px 6px;
 }
@@ -255,6 +273,21 @@ a{color:inherit}
 .store-excess-badge{margin-left:8px;padding:3px 8px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-size:11px;font-weight:800}
 .store-threshold-note{margin-top:4px;font-size:11px;color:var(--muted);font-weight:600}
 .transfer-warn{margin-top:8px;padding:8px 10px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#be123c;font-size:12px;font-weight:700;line-height:1.5}
+.order-choice-modal{max-width:420px}
+.order-choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 4px}
+.order-choice-btn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  min-height:130px;padding:18px 12px;border-radius:18px;
+  background:#fff;border:1.5px solid var(--line);cursor:pointer;
+  box-shadow:var(--shadow);transition:transform .12s,background .15s;
+  touch-action:manipulation;
+}
+.order-choice-btn:active{transform:scale(.97);background:#f4efe8}
+.order-choice-btn.web{border-color:#bfdbfe}
+.order-choice-btn.shop{border-color:#fdba74}
+.order-choice-icon{font-size:32px;line-height:1}
+.order-choice-label{font-size:15px;font-weight:800;color:var(--navy)}
+.order-choice-desc{font-size:11px;color:var(--muted);font-weight:700;text-align:center;line-height:1.5}
 .store-status-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle;flex-shrink:0}
 .store-status-dot.danger{background:var(--red)}
 .store-status-dot.warning{background:var(--orange)}
