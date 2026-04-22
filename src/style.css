@@ -254,6 +254,7 @@ a{color:inherit}
 .store-status-dot.qty-excess{background:#2563eb}
 .store-excess-badge{margin-left:8px;padding:3px 8px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-size:11px;font-weight:800}
 .store-threshold-note{margin-top:4px;font-size:11px;color:var(--muted);font-weight:600}
+.transfer-warn{margin-top:8px;padding:8px 10px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#be123c;font-size:12px;font-weight:700;line-height:1.5}
 .store-status-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle;flex-shrink:0}
 .store-status-dot.danger{background:var(--red)}
 .store-status-dot.warning{background:var(--orange)}

@@ -629,10 +629,19 @@ function findAptItem(name){ return aptStock.find(a => a.name === name) || null; 
 function getTransferSuggestion(storeItem){
   // 店舗別最低在庫の合計不足を算出
   const shortage = storeItem.stores.reduce((sum, s) => sum + getStoreShortage(storeItem, s), 0);
+  if(shortage <= 0) return null;  // 全店舗が基準以上なら提案不要
   const apt = findAptItem(storeItem.name);
-  if(!apt || shortage <= 0 || apt.stock <= 0) return null;
-  const moveQty = Math.min(shortage, apt.stock);
-  return { apt, shortage, moveQty, remainingShortage: Math.max(0, shortage - moveQty) };
+  // apt が未登録でも在庫0でも、不足があるので提案セクションは表示する
+  const aptStockQty = Math.max(0, apt?.stock ?? 0);
+  const moveQty = Math.min(shortage, aptStockQty);
+  return {
+    apt: apt || { name: storeItem.name, stock: 0 },
+    shortage,
+    moveQty,
+    remainingShortage: Math.max(0, shortage - moveQty),
+    aptMissing: !apt,
+    aptEmpty: !!apt && aptStockQty <= 0
+  };
 }
 
 function getTransferKey(name, store){
@@ -776,16 +785,20 @@ function getTransferBoxHtml(item){
   const transfer = getTransferSuggestion(item);
   if(!transfer) return '';
   const maxQty = Math.min(transfer.apt.stock ?? 0, transfer.shortage);
+  const warningNote = transfer.aptMissing
+    ? `<div class="transfer-warn">⚠️ アパートにこの商品が未登録です。発注するかアパートに品目追加してください。</div>`
+    : (transfer.aptEmpty ? `<div class="transfer-warn">⚠️ アパート在庫が0です。発注が必要です。</div>` : '');
   return `
     <div class="transfer-box" id="TB_${eid(item.name,'')}">
       <div class="transfer-title">アパートから補充提案</div>
       <div class="small-note">不足合計 ${transfer.shortage}${item.unit} のうち、アパートから <strong>${maxQty}${item.unit}</strong> まで配分できます。</div>
+      ${warningNote}
       <div class="transfer-store-grid">
         ${item.stores.map(storeName => `<div id="TQ_${eid(item.name + '__' + storeName,'')}"></div>`).join('')}
       </div>
       ${getTransferSummaryHtml(item, transfer)}
       <div class="transfer-actions">
-        <button class="mini-btn primary" onclick="showTransferConfirm('${encodeURIComponent(item.name)}')">配分した数で補充する</button>
+        <button class="mini-btn primary" ${transfer.moveQty <= 0 ? 'disabled' : ''} onclick="showTransferConfirm('${encodeURIComponent(item.name)}')">配分した数で補充する</button>
         <button class="mini-btn secondary" onclick="showTab('order')">発注を見る</button>
       </div>
     </div>`;
@@ -795,6 +808,9 @@ function getTransferBoxHtmlInline(item, actionLabel, actionOnclick){
   const transfer = getTransferSuggestion(item);
   if(!transfer) return '';
   const maxQty = Math.min(transfer.apt.stock ?? 0, transfer.shortage);
+  const warningNote = transfer.aptMissing
+    ? `<div class="transfer-warn">⚠️ アパートにこの商品が未登録です。発注するかアパートに品目追加してください。</div>`
+    : (transfer.aptEmpty ? `<div class="transfer-warn">⚠️ アパート在庫が0です。発注が必要です。</div>` : '');
   const storeRows = item.stores.map(storeName => {
     const shortage  = getStoreShortage(item, storeName);
     const available = getAvailableTransferForStore(item, transfer, storeName);
@@ -821,10 +837,11 @@ function getTransferBoxHtmlInline(item, actionLabel, actionOnclick){
     <div class="transfer-box" id="TBR_${eid(item.name,'')}">
       <div class="transfer-title">アパートから補充提案</div>
       <div class="small-note">不足合計 ${transfer.shortage}${item.unit} のうち、アパートから <strong>${maxQty}${item.unit}</strong> まで配分できます。</div>
+      ${warningNote}
       <div class="transfer-store-grid">${storeRows}</div>
       <div class="transfer-summary" id="TBRS_${eid(item.name,'')}">合計 <strong>${getTransferPlanTotal(item,transfer)}${item.unit}</strong> を補充予定 ／ アパート残り <strong>${Math.max(0,(transfer.apt.stock??0)-getTransferPlanTotal(item,transfer))}${item.unit}</strong></div>
       <div class="transfer-actions">
-        <button class="mini-btn primary" onclick="showTransferConfirm('${encodeURIComponent(item.name)}')">配分した数で補充する</button>
+        <button class="mini-btn primary" ${transfer.moveQty <= 0 ? 'disabled' : ''} onclick="showTransferConfirm('${encodeURIComponent(item.name)}')">配分した数で補充する</button>
         <button class="mini-btn secondary" onclick="${actionOnclick}">${actionLabel}</button>
       </div>
     </div>`;
