@@ -627,8 +627,8 @@ function getAutoOrderQty(currentStock, min, target, fixedOrderQty){
 }
 function findAptItem(name){ return aptStock.find(a => a.name === name) || null; }
 function getTransferSuggestion(storeItem){
-  const total = getTotal(storeItem);
-  const shortage = Math.max(0, (storeItem.min + 1) - total);
+  // 店舗別最低在庫の合計不足を算出
+  const shortage = storeItem.stores.reduce((sum, s) => sum + getStoreShortage(storeItem, s), 0);
   const apt = findAptItem(storeItem.name);
   if(!apt || shortage <= 0 || apt.stock <= 0) return null;
   const moveQty = Math.min(shortage, apt.stock);
@@ -639,8 +639,16 @@ function getTransferKey(name, store){
   return `${name}__${store}`;
 }
 function getStoreShortage(item, storeName){
-  const current = storeStock[item.name]?.[storeName];
-  return Math.max(0, (item.min + 1) - (current ?? 0));
+  const current = storeStock[item.name]?.[storeName] ?? 0;
+  const storeMin = getStoreMin(item, storeName);
+  return Math.max(0, storeMin - current);
+}
+// 補充入力の上限(店舗別 max が設定されていれば max-current で頭打ち)
+function getStoreRefillCap(item, storeName){
+  const current = storeStock[item.name]?.[storeName] ?? 0;
+  const storeMax = getStoreMax(item, storeName);
+  if(storeMax == null) return Infinity;
+  return Math.max(0, storeMax - current);
 }
 function getDraftValue(name, storeName){
   const saved = transferDraftQty[getTransferKey(name, storeName)];
@@ -652,9 +660,10 @@ function buildTransferPlanMap(item, transfer){
 
   for(const s of item.stores){
     const shortage = getStoreShortage(item, s);
+    const cap = getStoreRefillCap(item, s);  // 店舗別 max による頭打ち
     const saved = getDraftValue(item.name, s);
     if(saved != null){
-      const qty = Math.max(0, Math.min(Math.floor(Number(saved) || 0), shortage, remainingApt));
+      const qty = Math.max(0, Math.min(Math.floor(Number(saved) || 0), cap, remainingApt));
       plan[s] = qty;
       remainingApt -= qty;
     }else{
@@ -665,7 +674,8 @@ function buildTransferPlanMap(item, transfer){
   for(const s of item.stores){
     if(plan[s] != null) continue;
     const shortage = getStoreShortage(item, s);
-    const qty = Math.max(0, Math.min(shortage, remainingApt));
+    const cap = getStoreRefillCap(item, s);
+    const qty = Math.max(0, Math.min(shortage, cap, remainingApt));
     plan[s] = qty;
     remainingApt -= qty;
   }
@@ -680,7 +690,9 @@ function getAvailableTransferForStore(item, transfer, storeName){
   const aptStockQty = Math.max(0, transfer?.apt?.stock ?? 0);
   const plan = buildTransferPlanMap(item, transfer);
   const others = item.stores.reduce((sum, s) => s === storeName ? sum : sum + (plan[s] ?? 0), 0);
-  return Math.max(0, aptStockQty - others);
+  const aptAvail = Math.max(0, aptStockQty - others);
+  const cap = getStoreRefillCap(item, storeName);  // 店舗別 max による頭打ち
+  return Math.min(aptAvail, cap);
 }
 function getSelectedTransferQty(item, transfer, storeName){
   const plan = buildTransferPlanMap(item, transfer);
@@ -693,10 +705,11 @@ function setTransferQtyValue(itemName, storeName, value){
   const transfer = getTransferSuggestion(item);
   if(!transfer) return;
 
-  const shortage = getStoreShortage(item, storeName);
   const currentPlan = buildTransferPlanMap(item, transfer);
   const others = item.stores.reduce((sum, s) => s === storeName ? sum : sum + (currentPlan[s] ?? 0), 0);
-  const maxQty = Math.max(0, (transfer.apt.stock ?? 0) - others);  // upper limit = apt remaining stock
+  const aptAvail = Math.max(0, (transfer.apt.stock ?? 0) - others);
+  const cap = getStoreRefillCap(item, storeName);  // 店舗別 max による頭打ち
+  const maxQty = Math.min(aptAvail, cap);
   const normalized = Math.max(0, Math.min(maxQty, Math.floor(Number(value) || 0)));
   transferDraftQty[getTransferKey(itemName, storeName)] = normalized;
 }
@@ -1271,10 +1284,12 @@ function renderStoreCard(item, focusStoreName=null){
       ? `<span class="store-check-note">${new Date(checkedEntry.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>`
       : '<span class="store-check-note">未確認</span>';
     const storeMaxVal = getStoreMax(item, store);
+    const storeMinVal = getStoreMin(item, store);
     const excessBadge = storeMaxVal != null && v >= storeMaxVal
       ? `<span class="store-excess-badge">🔵 過剰</span>` : '';
+    const thresholdNote = `<div class="store-threshold-note">最低 ${storeMinVal}${item.unit}${storeMaxVal != null ? ` ／ 過剰 ${storeMaxVal}${item.unit}` : ''}</div>`;
     return `<div class="store-row">
-      <div class="store-left"><div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item, store)}"></span>${store}${excessBadge}</div></div>
+      <div class="store-left"><div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item, store)}"></span>${store}${excessBadge}</div>${thresholdNote}</div>
       <div class="store-row-right">
         <span class="qty-val tappable ${storeQtyStatusClass(v, item, store)}" id="${eid(item.name, store)}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'store',name:'${encodeURIComponent(item.name)}',store:'${encodeURIComponent(store)}'})">${v}</span>
         <span class="qty-unit">${item.unit}</span>
@@ -1305,17 +1320,6 @@ function renderStoreCard(item, focusStoreName=null){
     </div>
 
     <div class="store-rows">${storeRowsHtml}</div>
-
-    <div class="meta-grid">
-      <div class="meta-box">
-        <div class="meta-label">最低在庫</div>
-        <div class="meta-value">${item.min}<span class="qty-unit"> ${item.unit}</span></div>
-      </div>
-      <div class="meta-box">
-        <div class="meta-label">目標在庫</div>
-        <div class="meta-value">${target}<span class="qty-unit"> ${item.unit}</span></div>
-      </div>
-    </div>
 
     <div id="TR_${eid(item.name,'')}">${getTransferBoxHtml(item)}</div>
   </div>`;
@@ -2166,6 +2170,9 @@ function openModal(opts){
   document.getElementById('f-stores-row').style.display = opts.mode === 'store' ? 'block' : 'none';
   document.getElementById('f-store-order-fields').style.display = opts.mode === 'store' ? 'block' : 'none';
   document.getElementById('f-apt-fields').style.display = opts.mode === 'apt' ? 'block' : 'none';
+  // 店舗モードではグローバルの最低/目標在庫数は非表示(店舗別しきい値で設定するため)
+  document.getElementById('f-min-row').style.display = opts.mode === 'store' ? 'none' : 'block';
+  document.getElementById('f-target-row').style.display = opts.mode === 'store' ? 'none' : 'block';
   // モードに応じて「最低在庫数」「目標在庫数」のラベル/ヒントを切替
   const minLabel = document.getElementById('f-min-label');
   const targetLabel = document.getElementById('f-target-label');
@@ -2264,15 +2271,25 @@ function validateModalValues(){
     .trim().replace(/\s+/g, ' ');  // normalize inner spaces
   const category = document.getElementById('f-category').value;
   const unit = document.getElementById('f-unit').value;
-  const minVal = clampInt(document.getElementById('f-min').value, 0, 9999);
-  const targetRaw = clampInt(document.getElementById('f-target').value, 1, 9999);
   const stock = clampInt(document.getElementById('f-stock').value, 0, 9999) ?? 0;
 
   if(!name){ alert('商品名を入力してください'); return null; }
   if(!CATEGORY_OPTIONS.includes(category)){ alert('カテゴリを選択してください'); return null; }
   if(!UNIT_OPTIONS.includes(unit)){ alert('単位を選択してください'); return null; }
-  if(minVal == null){ alert('最低在庫数を正しく入力してください'); return null; }
-  const targetVal = targetRaw == null ? Math.max(minVal + 1, minVal * 2, 1) : Math.max(targetRaw, minVal + 1);
+
+  // 店舗モードでは最低/目標在庫は店舗別しきい値から自動計算、アパートモードでは必須入力
+  let minVal, targetVal;
+  if(modalState.mode === 'store'){
+    const thresholds = readStoreThresholdsFromForm(selectedStores);
+    minVal = Object.values(thresholds).reduce((sum, t) => sum + (Number.isFinite(t.min) ? t.min : 0), 0);
+    const maxSum = Object.values(thresholds).reduce((sum, t) => sum + (Number.isFinite(t.max) ? t.max : 0), 0);
+    targetVal = maxSum > 0 ? Math.max(maxSum, minVal + 1) : Math.max(minVal + 1, minVal * 2, 1);
+  }else{
+    minVal = clampInt(document.getElementById('f-min').value, 0, 9999);
+    const targetRaw = clampInt(document.getElementById('f-target').value, 1, 9999);
+    if(minVal == null){ alert('最低在庫数を正しく入力してください'); return null; }
+    targetVal = targetRaw == null ? Math.max(minVal + 1, minVal * 2, 1) : Math.max(targetRaw, minVal + 1);
+  }
 
   return {user, name, category, unit, minVal, targetVal, stock};
 }
