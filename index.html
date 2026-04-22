@@ -11,12 +11,12 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260420i">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260420i">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260420i">
-<link rel="manifest" href="manifest.webmanifest?v=20260420i">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260422a">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260422a">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260422a">
+<link rel="manifest" href="manifest.webmanifest?v=20260422a">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260420i">
+<link rel="stylesheet" href="src/style.css?v=20260422a">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,7 +36,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section">
-    <img src="icons/icon-512.png?v=20260420i" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260422a" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -233,10 +233,23 @@
     </div>
 
     <div class="form-row" id="f-stores-row">
-      <div class="form-label">対象店舗（複数選択可）*</div>
-      <div class="store-checks">
-        <div class="store-check checked" id="chk-神楽坂" onclick="toggleStore('神楽坂')">神楽坂</div>
-        <div class="store-check checked" id="chk-男マエ食道" onclick="toggleStore('男マエ食道')">男マエ食道</div>
+      <div class="form-label">対象店舗別の在庫しきい値 *</div>
+      <div class="form-help" style="margin-bottom:8px">店舗名をタップで取扱の有無を切替。最低/過剰は空欄可(既定値を使用/過剰警告なし)</div>
+      <div class="store-threshold-list">
+        <div class="store-threshold-group" id="thr-grp-神楽坂">
+          <div class="store-check checked" id="chk-神楽坂" onclick="toggleStore('神楽坂')">神楽坂</div>
+          <div class="threshold-inputs">
+            <label class="threshold-field"><span>最低</span><input class="form-input threshold-input" id="f-storemin-神楽坂" type="number" inputmode="numeric" min="0" max="9999" placeholder="既定"></label>
+            <label class="threshold-field"><span>過剰</span><input class="form-input threshold-input" id="f-storemax-神楽坂" type="number" inputmode="numeric" min="0" max="9999" placeholder="なし"></label>
+          </div>
+        </div>
+        <div class="store-threshold-group" id="thr-grp-男マエ食道">
+          <div class="store-check checked" id="chk-男マエ食道" onclick="toggleStore('男マエ食道')">男マエ食道</div>
+          <div class="threshold-inputs">
+            <label class="threshold-field"><span>最低</span><input class="form-input threshold-input" id="f-storemin-男マエ食道" type="number" inputmode="numeric" min="0" max="9999" placeholder="既定"></label>
+            <label class="threshold-field"><span>過剰</span><input class="form-input threshold-input" id="f-storemax-男マエ食道" type="number" inputmode="numeric" min="0" max="9999" placeholder="なし"></label>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -353,6 +366,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260420i"></script>
+<script src="src/main.js?v=20260422a"></script>
 </body>
 </html>

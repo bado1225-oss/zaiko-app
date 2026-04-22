@@ -250,6 +250,9 @@ a{color:inherit}
 .qty-val.qty-danger{color:var(--red);font-weight:900}
 .qty-val.qty-warning{color:var(--orange)}
 .qty-val.qty-ok{color:var(--green)}
+.qty-val.qty-excess{color:#2563eb;font-weight:900}
+.store-status-dot.qty-excess{background:#2563eb}
+.store-excess-badge{margin-left:8px;padding:3px 8px;border-radius:999px;background:#dbeafe;color:#1e3a8a;font-size:11px;font-weight:800}
 .store-status-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle;flex-shrink:0}
 .store-status-dot.danger{background:var(--red)}
 .store-status-dot.warning{background:var(--orange)}
@@ -450,6 +453,14 @@ a{color:inherit}
   border:1.5px solid var(--line);background:#fff;color:#7c7266;font-size:13px;font-weight:800;cursor:pointer
 }
 .store-check.checked{border-color:var(--navy);background:#edf3fb;color:var(--navy)}
+.store-threshold-list{display:flex;flex-direction:column;gap:10px}
+.store-threshold-group{border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff;transition:opacity .15s}
+.store-threshold-group.disabled{opacity:.5}
+.store-threshold-group.disabled .threshold-inputs{pointer-events:none}
+.store-threshold-group .store-check{flex:none;width:100%;margin-bottom:8px}
+.threshold-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.threshold-field{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);font-weight:700}
+.threshold-input{padding:8px 10px;font-size:14px}
 .modal-actions{display:flex;gap:8px;margin-top:18px}
 .modal-cancel,.modal-submit,.modal-delete{
   min-height:48px;border-radius:16px;padding:12px 14px;font-weight:800;cursor:pointer

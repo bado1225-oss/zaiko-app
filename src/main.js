@@ -103,9 +103,21 @@ function normalizeStoreItem(item){
     supplierUrl: (item.supplierUrl || '').trim(),
     orderQty: item.orderQty ?? null,
     stores: item.stores || ['神楽坂','男マエ食道'],
+    storeThresholds: item.storeThresholds || {},
     ...item,
     name: (item.name || '').trim(),  // normalize whitespace
   };
+}
+// 店舗別の最低在庫(未設定ならグローバル min を店舗数で割った値にフォールバック)
+function getStoreMin(item, store){
+  const v = item.storeThresholds?.[store]?.min;
+  if(Number.isFinite(v)) return v;
+  return Math.ceil((item.min || 0) / Math.max(1, item.stores.length));
+}
+// 店舗別の過剰在庫(未設定の場合は警告なし=null)
+function getStoreMax(item, store){
+  const v = item.storeThresholds?.[store]?.max;
+  return Number.isFinite(v) ? v : null;
 }
 function normalizeAptItem(item){
   return {
@@ -231,7 +243,7 @@ async function upsertMyProfile(){
     display_name: displayName
   });
 }
-function mapItemRow(row, targets){
+function mapItemRow(row, targets, storeThresholds){
   return normalizeStoreItem({
     id: row.id,
     itemId: row.id,
@@ -243,7 +255,8 @@ function mapItemRow(row, targets){
     supplier: row.supplier || '',
     supplierUrl: (row.supplier_url || '').trim(),
     orderQty: row.fixed_order_qty ?? null,
-    stores: targets
+    stores: targets,
+    storeThresholds: storeThresholds || {}
   });
 }
 async function reloadAllFromSupabase(){
@@ -267,16 +280,24 @@ async function reloadAllFromSupabase(){
   itemIdByName = {};
   itemNameById = {};
   const targetMap = {};
+  const thresholdMap = {};
   (targetsRes.data || []).forEach(t => {
     const name = STORE_NAME_MAP[t.store_code];
     if(!targetMap[t.item_id]) targetMap[t.item_id] = [];
     if(name) targetMap[t.item_id].push(name);
+    if(name && (t.min_stock != null || t.max_stock != null)){
+      if(!thresholdMap[t.item_id]) thresholdMap[t.item_id] = {};
+      const entry = {};
+      if(t.min_stock != null) entry.min = t.min_stock;
+      if(t.max_stock != null) entry.max = t.max_stock;
+      thresholdMap[t.item_id][name] = entry;
+    }
   });
 
   ITEMS = (itemsRes.data || []).map(row => {
     itemIdByName[row.name] = row.id;
     itemNameById[row.id] = row.name;
-    return mapItemRow(row, targetMap[row.id] || []);
+    return mapItemRow(row, targetMap[row.id] || [], thresholdMap[row.id] || {});
   });
 
   storeStock = {};
@@ -428,7 +449,13 @@ async function cloudUpdateItem(item, mode='upsert'){
 async function cloudReplaceStoreTargets(item){
   if(!isCloudReady() || !item.id) return;
   await supabaseClient.from('item_store_targets').delete().eq('item_id', item.id);
-  const rows = item.stores.map(s => ({ item_id:item.id, store_code: STORE_CODE_MAP[s], is_enabled:true }));
+  const rows = item.stores.map(s => {
+    const t = item.storeThresholds?.[s] || {};
+    const row = { item_id:item.id, store_code: STORE_CODE_MAP[s], is_enabled:true };
+    if(Number.isFinite(t.min)) row.min_stock = t.min;
+    if(Number.isFinite(t.max)) row.max_stock = t.max;
+    return row;
+  });
   if(rows.length) {
     const { error } = await supabaseClient.from('item_store_targets').insert(rows);
     if(error) throw error;
@@ -856,7 +883,7 @@ function updateStoreCardUI(name){
     if(qtyEl && item){
       const sv = storeStock[name]?.[storeName] ?? 0;
       qtyEl.textContent = sv;
-      if(item.stores.includes(storeName)) qtyEl.className = `qty-val tappable ${storeQtyStatusClass(sv, item)}`;
+      if(item.stores.includes(storeName)) qtyEl.className = `qty-val tappable ${storeQtyStatusClass(sv, item, storeName)}`;
     }
   });
   card.className = `item-card ${statusClassForCard(total,item.min)}`;
@@ -1203,11 +1230,27 @@ function statusClassForTotal(current,min){
   if(level==='warning') return 'total-warning';
   return 'total-ok';
 }
-function storeQtyStatusClass(v,item){
-  if(v<=0) return 'qty-danger';
-  const thr=Math.ceil((item.min||0)/Math.max(1,item.stores.length));
-  if(v<=thr) return 'qty-warning';
+function storeQtyStatusClass(v, item, store){
+  if(v <= 0) return 'qty-danger';
+  if(store){
+    const max = getStoreMax(item, store);
+    if(max != null && v >= max) return 'qty-excess';
+    const min = getStoreMin(item, store);
+    if(v <= min) return 'qty-warning';
+    return 'qty-ok';
+  }
+  // 後方互換: storeが渡されない古い呼び出し
+  const thr = Math.ceil((item.min || 0) / Math.max(1, item.stores.length));
+  if(v <= thr) return 'qty-warning';
   return 'qty-ok';
+}
+function getStoreStatusText(v, item, store){
+  if(v <= 0) return '🔴 要補充';
+  const max = getStoreMax(item, store);
+  if(max != null && v >= max) return '🔵 過剰';
+  const min = getStoreMin(item, store);
+  if(v <= min) return '🟡 要注意';
+  return '🟢 正常';
 }
 function renderStoreCard(item, focusStoreName=null){
   const total = getTotal(item);
@@ -1227,10 +1270,13 @@ function renderStoreCard(item, focusStoreName=null){
     const checkedMeta = checkedEntry
       ? `<span class="store-check-note">${new Date(checkedEntry.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>`
       : '<span class="store-check-note">未確認</span>';
+    const storeMaxVal = getStoreMax(item, store);
+    const excessBadge = storeMaxVal != null && v >= storeMaxVal
+      ? `<span class="store-excess-badge">🔵 過剰</span>` : '';
     return `<div class="store-row">
-      <div class="store-left"><div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item)}"></span>${store}</div></div>
+      <div class="store-left"><div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item, store)}"></span>${store}${excessBadge}</div></div>
       <div class="store-row-right">
-        <span class="qty-val tappable ${storeQtyStatusClass(v, item)}" id="${eid(item.name, store)}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'store',name:'${encodeURIComponent(item.name)}',store:'${encodeURIComponent(store)}'})">${v}</span>
+        <span class="qty-val tappable ${storeQtyStatusClass(v, item, store)}" id="${eid(item.name, store)}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'store',name:'${encodeURIComponent(item.name)}',store:'${encodeURIComponent(store)}'})">${v}</span>
         <span class="qty-unit">${item.unit}</span>
         ${checkedMeta}
         <button class="check-btn-store ${checked ? 'checked' : ''}" aria-label="${store} ${item.name} の確認状態" title="${checked ? '確認済み' : '未確認'}" onclick="toggleStoreChecked('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}')"></button>
@@ -2103,6 +2149,15 @@ function openModal(opts){
   modalState = opts;
   const isEdit = opts.editName != null || opts.editIdx != null;
   ['f-name','f-min','f-target','f-stock','f-supplier','f-url','f-order','f-store-supplier','f-store-url','f-store-order'].forEach(id => document.getElementById(id).value = '');
+  // 店舗別しきい値フィールドを初期化
+  STORES.forEach(s => {
+    const minEl = document.getElementById('f-storemin-' + s);
+    const maxEl = document.getElementById('f-storemax-' + s);
+    if(minEl) minEl.value = '';
+    if(maxEl) maxEl.value = '';
+    const grp = document.getElementById('thr-grp-' + s);
+    if(grp) grp.classList.remove('disabled');
+  });
   document.getElementById('f-user').value = localStorage.getItem('inv_user') || '';
   document.getElementById('f-category').value = '消耗品';
   document.getElementById('f-unit').value = '';
@@ -2142,6 +2197,16 @@ function openModal(opts){
     document.getElementById('f-store-order').value = item.orderQty != null ? item.orderQty : '';
     selectedStores = [...item.stores];
     STORES.forEach(s => document.getElementById('chk-' + s).className = 'store-check' + (selectedStores.includes(s) ? ' checked' : ''));
+    // 店舗別しきい値を既存値から復元
+    STORES.forEach(s => {
+      const t = item.storeThresholds?.[s] || {};
+      const minEl = document.getElementById('f-storemin-' + s);
+      const maxEl = document.getElementById('f-storemax-' + s);
+      if(minEl) minEl.value = Number.isFinite(t.min) ? t.min : '';
+      if(maxEl) maxEl.value = Number.isFinite(t.max) ? t.max : '';
+      const grp = document.getElementById('thr-grp-' + s);
+      if(grp) grp.classList.toggle('disabled', !selectedStores.includes(s));
+    });
   }else if(isEdit && opts.mode === 'apt'){
     const item = aptStock[opts.editIdx];
     if(!item) return;
@@ -2161,6 +2226,21 @@ function openModal(opts){
 }
 function closeModal(){ document.getElementById('modal-overlay').classList.remove('open'); }
 function closeModalOutside(e){ if(e.target === document.getElementById('modal-overlay')) closeModal(); }
+function readStoreThresholdsFromForm(activeStores){
+  const result = {};
+  STORES.forEach(s => {
+    if(!activeStores.includes(s)) return;
+    const minEl = document.getElementById('f-storemin-' + s);
+    const maxEl = document.getElementById('f-storemax-' + s);
+    const minRaw = (minEl?.value ?? '').trim();
+    const maxRaw = (maxEl?.value ?? '').trim();
+    const entry = {};
+    if(minRaw !== '') entry.min = Math.max(0, Math.min(9999, parseInt(minRaw, 10) || 0));
+    if(maxRaw !== '') entry.max = Math.max(0, Math.min(9999, parseInt(maxRaw, 10) || 0));
+    if(Object.keys(entry).length) result[s] = entry;
+  });
+  return result;
+}
 function toggleStore(store){
   const idx = selectedStores.indexOf(store);
   if(idx >= 0){
@@ -2171,6 +2251,8 @@ function toggleStore(store){
     selectedStores.push(store);
     document.getElementById('chk-' + store).className = 'store-check checked';
   }
+  const grp = document.getElementById('thr-grp-' + store);
+  if(grp) grp.classList.toggle('disabled', !selectedStores.includes(store));
 }
 function validateModalValues(){
   const user = (document.getElementById('f-user').value || '').trim();
@@ -2221,6 +2303,8 @@ async function submitModal(){
       item.supplier = supplier || '';
       item.supplierUrl = supplierUrl || '';
       item.orderQty = orderQty;
+      // 店舗別しきい値を読み取り
+      item.storeThresholds = readStoreThresholdsFromForm(selectedStores);
 
       if(oldName !== name){
         storeStock[name] = storeStock[oldName] || {};
@@ -2283,6 +2367,7 @@ async function submitModal(){
         name, category, unit,
         min:minVal, target:targetVal,
         stores:[...selectedStores],
+        storeThresholds: readStoreThresholdsFromForm(selectedStores),
         supplier: supplier || '',
         supplierUrl: supplierUrl || '',
         orderQty
