@@ -1968,10 +1968,26 @@ function closeQtyModal(){
 function closeQtyModalOutside(e){
   if(e.target === document.getElementById('qty-modal-overlay')) closeQtyModal();
 }
+let lastQtyStepAt = 0;
+const QTY_STEP_DEBOUNCE_MS = 60;
+const QTY_LARGE_CHANGE_THRESHOLD = 10;
 function stepQtyModal(delta){
+  const now = Date.now();
+  if(now - lastQtyStepAt < QTY_STEP_DEBOUNCE_MS) return;
+  lastQtyStepAt = now;
   const input = document.getElementById('qty-modal-input');
   const current = Math.max(0, parseInt(input.value || '0', 10) || 0);
   input.value = Math.max(0, current + delta);
+}
+function qtyModalInitialValue(){
+  if(!qtyModalState) return 0;
+  if(qtyModalState.mode === 'shopping') return qtyModalState.value ?? 0;
+  if(qtyModalState.mode === 'store'){
+    const name = decodeURIComponent(qtyModalState.name);
+    const store = decodeURIComponent(qtyModalState.store);
+    return storeStock[name]?.[store] ?? 0;
+  }
+  return aptStock[qtyModalState.idx]?.stock ?? 0;
 }
 async function saveQtyModal(){
   if(!qtyModalState) return;
@@ -1979,6 +1995,11 @@ async function saveQtyModal(){
   if(!user) return;
   const input = document.getElementById('qty-modal-input');
   const nextValue = Math.max(0, Math.min(9999, parseInt(input.value || '0', 10) || 0));
+  const initialValue = qtyModalInitialValue();
+  if(Math.abs(nextValue - initialValue) >= QTY_LARGE_CHANGE_THRESHOLD){
+    const diffText = nextValue > initialValue ? `+${nextValue - initialValue}` : `${nextValue - initialValue}`;
+    if(!window.confirm(`在庫数を ${initialValue} → ${nextValue}(${diffText})に変更します。よろしいですか?`)) return;
+  }
   if(qtyModalState.mode === 'shopping'){
     const key = decodeURIComponent(qtyModalState.name) + '|' + decodeURIComponent(qtyModalState.store);
     shoppingQtyOverrides[key] = nextValue;
