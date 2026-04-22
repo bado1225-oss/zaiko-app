@@ -1161,29 +1161,25 @@ function sortItems(items, sortValue){
   }
   return arr;
 }
-function isStoreItemFullyChecked(item){
-  // 現在の店舗表示フィルタで見えている店舗がすべてチェック済みかを判定
-  const relevantStores = (storeViewFilter === 'all' ? STORES : [storeViewFilter])
-    .filter(s => item.stores.includes(s));
-  if(relevantStores.length === 0) return false;
-  return relevantStores.every(s => isStoreChecked(item.name, s));
+function passStoreCheckVisibility(itemName, storeName){
+  // 店舗セクションごとに、その店舗でチェック済みかどうかでフィルタする
+  const visibility = document.getElementById('filter-check-visibility')?.value || 'unchecked';
+  const checked = isStoreChecked(itemName, storeName);
+  if(visibility === 'all') return true;
+  if(visibility === 'checked') return checked;
+  return !checked; // 'unchecked'
 }
 function filteredStoreItems(){
   populateStoreSearch();
   const q = (document.getElementById('search-store')?.value || '').trim().toLowerCase();
   const category = document.getElementById('filter-category')?.value || 'all';
-  const checkVisibility = document.getElementById('filter-check-visibility')?.value || 'unchecked';
   const sortValue = document.getElementById('sort-store')?.value || '不足順';
   let list = ITEMS.filter(item => {
     const matchesQ = !q || item.name.toLowerCase().includes(q);
     const matchesCategory = category === 'all' || item.category === category;
     const matchesQuick = quickFilter === 'all' ||
       (quickFilter === 'danger' ? getTotal(item) <= item.min : item.category === quickFilter);
-    const fullyChecked = isStoreItemFullyChecked(item);
-    const matchesVisibility = checkVisibility === 'all'
-      || (checkVisibility === 'unchecked' && !fullyChecked)
-      || (checkVisibility === 'checked' && fullyChecked);
-    return matchesQ && matchesCategory && matchesQuick && matchesVisibility;
+    return matchesQ && matchesCategory && matchesQuick;
   });
   return sortItems(list, sortValue);
 }
@@ -1276,7 +1272,7 @@ function renderStoreCard(item, focusStoreName=null){
   </div>`;
 }
 function renderStoreSection(items, storeName){
-  const sectionItems = items.filter(item => item.stores.includes(storeName));
+  const sectionItems = items.filter(item => item.stores.includes(storeName) && passStoreCheckVisibility(item.name, storeName));
   const sectionHtml = sectionItems.length
     ? sectionItems.map(item => renderStoreCard(item, storeName)).join('')
     : `<div class="empty"><div class="empty-icon">📭</div>${escapeHtml(storeName)} の該当商品がありません</div>`;
@@ -1299,11 +1295,11 @@ function renderStore(){
     return;
   }
   if(storeViewFilter === 'all'){
-    const totalVisible = STORES.reduce((sum, storeName) => sum + list.filter(item => item.stores.includes(storeName)).length, 0);
+    const totalVisible = STORES.reduce((sum, storeName) => sum + list.filter(item => item.stores.includes(storeName) && passStoreCheckVisibility(item.name, storeName)).length, 0);
     document.getElementById('store-count-pill').textContent = totalVisible + '件';
     c.innerHTML = STORES.map(storeName => renderStoreSection(list, storeName)).join('');
   }else{
-    const filtered = list.filter(item => item.stores.includes(storeViewFilter));
+    const filtered = list.filter(item => item.stores.includes(storeViewFilter) && passStoreCheckVisibility(item.name, storeViewFilter));
     document.getElementById('store-count-pill').textContent = filtered.length + '件';
     c.innerHTML = renderStoreSection(filtered, storeViewFilter);
   }
