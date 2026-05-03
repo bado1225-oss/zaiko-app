@@ -1103,9 +1103,15 @@ function dashboardStats(){
   const allNames = new Set([...ITEMS.map(i => i.name), ...aptStock.map(i => i.name)]);
   const totalItemCount = allNames.size;
   const refillCount = storeIssues.size;
-  const aptOrderCount = aptIssues.size;
+  // 発注必要: アパート在庫不足 + アパートに在庫がない店舗不足品(供給URLあり)
+  const { aptList, storeShortageList } = getOrderLists();
+  const orderNames = new Set([
+    ...aptList.map(i => i.name),
+    ...storeShortageList.map(i => i.name)
+  ]);
+  const aptOrderCount = orderNames.size;
   let normalCount = 0;
-  allNames.forEach(name => { if(!storeIssues.has(name) && !aptIssues.has(name)) normalCount++; });
+  allNames.forEach(name => { if(!storeIssues.has(name) && !orderNames.has(name)) normalCount++; });
   return { refillCount, aptOrderCount, normalCount, totalItemCount };
 }
 function renderDashboard(){
@@ -1493,12 +1499,29 @@ function makeOrderCard({scope,name,unit,min,target,supplier,supplierUrl,orderQty
     </div>
   </div>`;
 }
+// 発注必要リストを取得(2系統)
+//   1. アパート在庫が最低以下 + supplierUrl ある apt 品目
+//   2. 店舗で不足 + アパートに在庫なし(or 未登録) + supplierUrl ある store 品目
+function getOrderLists(){
+  const aptList = aptStock.filter(item => item.stock <= item.min && item.supplierUrl);
+  const aptNames = new Set(aptList.map(a => a.name));
+  const storeShortageList = ITEMS.filter(item => {
+    if(!item.supplierUrl) return false;
+    if(aptNames.has(item.name)) return false;  // アパート側で既に発注対象
+    const totalShortage = item.stores.reduce((sum, s) => sum + getStoreShortage(item, s), 0);
+    if(totalShortage <= 0) return false;
+    const apt = findAptItem(item.name);
+    return !apt || apt.stock <= 0;  // アパート未登録 or 在庫切れ
+  });
+  return { aptList, storeShortageList };
+}
 function renderOrder(){
   const c = document.getElementById('order-items');
-  const aptList = aptStock.filter(item => item.stock <= item.min && item.supplierUrl);
+  const { aptList, storeShortageList } = getOrderLists();
   // Auto-clear orderChecks for items no longer in the order list
   const _visibleKeys = new Set(
     aptList.map(i => orderCheckKey('アパート発注', i.name))
+      .concat(storeShortageList.map(i => orderCheckKey('店舗不足', i.name)))
   );
   const _nowStale = [];
   Object.keys(orderChecks).forEach(key => {
@@ -1526,17 +1549,40 @@ function renderOrder(){
     });
     persist('inv_order_checks_v1', orderChecks);
   }
-  document.getElementById('order-count-pill').textContent = aptList.length + '件';
-  if(!aptList.length){
+  const totalCount = aptList.length + storeShortageList.length;
+  document.getElementById('order-count-pill').textContent = totalCount + '件';
+  if(!totalCount){
     c.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>ネット発注が必要な商品はありません</div>';
     return;
   }
-  const html = aptList.map(item => makeOrderCard({
-    scope:'アパート発注',
-    name:item.name, unit:item.unit, min:item.min, target:getTarget(item),
-    supplier:item.supplier, supplierUrl:item.supplierUrl, orderQty:item.orderQty,
-    currentStock:item.stock, category:item.category, transferText:''
-  })).join('');
+  let html = '';
+  if(aptList.length){
+    html += `<div class="order-section-label">🏠 アパート在庫が不足</div>`;
+    html += aptList.map(item => makeOrderCard({
+      scope:'アパート発注',
+      name:item.name, unit:item.unit, min:item.min, target:getTarget(item),
+      supplier:item.supplier, supplierUrl:item.supplierUrl, orderQty:item.orderQty,
+      currentStock:item.stock, category:item.category, transferText:''
+    })).join('');
+  }
+  if(storeShortageList.length){
+    html += `<div class="order-section-label">🏪 店舗不足(アパート在庫なし)</div>`;
+    html += storeShortageList.map(item => {
+      const totalStock = getTotal(item);
+      const breakdown = item.stores
+        .map(s => ({ store: s, shortage: getStoreShortage(item, s) }))
+        .filter(x => x.shortage > 0)
+        .map(x => `${x.store}: 不足${x.shortage}${item.unit}`)
+        .join(' ／ ');
+      const transferText = `アパートに在庫がないため、サプライヤーへ直接発注してください。${breakdown ? `<br><strong>${breakdown}</strong>` : ''}`;
+      return makeOrderCard({
+        scope:'店舗不足',
+        name:item.name, unit:item.unit, min:item.min, target:getTarget(item),
+        supplier:item.supplier, supplierUrl:item.supplierUrl, orderQty:item.orderQty,
+        currentStock:totalStock, category:item.category, transferText
+      });
+    }).join('');
+  }
   c.innerHTML = html;
 }
 
