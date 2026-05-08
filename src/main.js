@@ -313,24 +313,37 @@ async function reloadAllFromSupabase(){
     }
   });
 
+  // 孤立した apartment_inventory 行(items マスタ非アクティブ等で参照不能なもの)を
+  // クラウドから自動削除して、UIに「不明商品」が出ないようにする
+  const _orphanedAptIds = [];
   aptStock = (aptRes.data || []).map(r => {
     const item = ITEMS.find(i => i.id === r.item_id || itemIdByName[i?.name] === r.item_id || i.name === itemNameById[r.item_id]);
     const fallback = ITEMS.find(i => i.name === itemNameById[r.item_id]);
     const ref = item || fallback;
+    if(!ref){
+      _orphanedAptIds.push(r.id);  // 後でクラウドからも削除
+      return null;
+    }
     return normalizeAptItem({
       id: r.id,
       itemId: r.item_id,
-      name: ref?.name || itemNameById[r.item_id] || '不明商品',
-      category: ref?.category || '消耗品',
-      unit: ref?.unit || '個',
+      name: ref.name,
+      category: ref.category,
+      unit: ref.unit,
       stock: r.quantity,
-      min: (r.min_stock ?? ref?.min) ?? 0,
-      target: (r.target_stock ?? ref?.target) ?? 1,
-      supplier: ref?.supplier || '—',
-      supplierUrl: ref?.supplierUrl || '',
-      orderQty: ref?.orderQty ?? null
+      min: (r.min_stock ?? ref.min) ?? 0,
+      target: (r.target_stock ?? ref.target) ?? 1,
+      supplier: ref.supplier || '—',
+      supplierUrl: ref.supplierUrl || '',
+      orderQty: ref.orderQty ?? null
     });
-  });
+  }).filter(Boolean);
+  // 孤立行を非同期でクリーンアップ(失敗してもアプリは動作)
+  if(_orphanedAptIds.length){
+    supabaseClient.from('apartment_inventory').delete().in('id', _orphanedAptIds)
+      .then(({error}) => { if(error) console.warn('orphan apt cleanup:', error); })
+      .catch(e => console.warn('orphan apt cleanup:', e));
+  }
 
   orderChecks = {};
   (orderRes.data || []).forEach(r => {
@@ -2851,9 +2864,13 @@ async function deleteItem(){
     renderStore(); renderApt(); renderLogs(); renderDashboard();
     toast(`🗑 「${targetName}」を削除しました`);
   }else{
-    const targetName = aptStock[editIdx]?.name;
-    if(!targetName){ alert('対象の品目が見つかりません'); return; }
+    const target = aptStock[editIdx];
+    if(!target){ alert('対象の品目が見つかりません'); return; }
+    const targetName = target.name;
     if(!confirm(`「${targetName}」を削除しますか？`)) return;
+    // ロウID(apartment_inventory.id)と マスタID(items.id)を保持
+    const _aptRowId  = target.id != null ? target.id : null;
+    const _deletedItemId = target.itemId || itemIdByName[targetName] || null;
     aptStock.splice(editIdx,1);
     ['店舗不足', 'アパート発注'].forEach(scope => {
       delete orderChecks[orderCheckKey(scope, targetName)];
@@ -2864,18 +2881,23 @@ async function deleteItem(){
       delete shoppingQtyOverrides[k];
     });
     persist('inv_order_checks_v1', orderChecks);
-    const _deletedItemId = itemIdByName[targetName];
     persist('inv_apt_v3', aptStock, 'inv_apt_ts_v3');
-    if(isCloudReady() && _deletedItemId){
+    if(isCloudReady()){
       try{
-        // アパート在庫の行を削除
-        await supabaseClient.from('apartment_inventory').delete().eq('item_id', _deletedItemId);
-        // 店舗側に同名品目が無ければ items マスタも完全削除
-        const storeStillHas = ITEMS.some(i => i.name === targetName);
-        if(!storeStillHas){
-          await supabaseClient.from('item_store_targets').delete().eq('item_id', _deletedItemId);
-          await supabaseClient.from('store_inventory').delete().eq('item_id', _deletedItemId);
-          await supabaseClient.from('items').update({is_active:false}).eq('id', _deletedItemId);
+        // 1) apartment_inventory の行を削除(item_id 不明でも apt-row id で確実に削除可能)
+        if(_aptRowId != null){
+          await supabaseClient.from('apartment_inventory').delete().eq('id', _aptRowId);
+        }else if(_deletedItemId){
+          await supabaseClient.from('apartment_inventory').delete().eq('item_id', _deletedItemId);
+        }
+        // 2) 店舗側に同名品目が無ければ items マスタも完全削除
+        if(_deletedItemId){
+          const storeStillHas = ITEMS.some(i => i.name === targetName);
+          if(!storeStillHas){
+            await supabaseClient.from('item_store_targets').delete().eq('item_id', _deletedItemId);
+            await supabaseClient.from('store_inventory').delete().eq('item_id', _deletedItemId);
+            await supabaseClient.from('items').update({is_active:false}).eq('id', _deletedItemId);
+          }
         }
       }catch(err){ console.error('cloud delete:', err); toast('クラウド反映に失敗しました'); }
     }
