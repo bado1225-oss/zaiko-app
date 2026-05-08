@@ -1347,11 +1347,20 @@ function renderStoreCard(item, focusStoreName=null){
     </div>`;
   }).join('');
 
+  // zaico風: 各店舗の在庫を1行のサマリー(テーブル列)で先に見せる
+  const compactSummary = STORES
+    .filter(s => item.stores.includes(s))
+    .map(s => {
+      const v = storeStock[item.name]?.[s] ?? 0;
+      const cls = storeQtyStatusClass(v, item, s);
+      return `<span class="store-cell"><span class="store-cell-name">${s}</span><span class="store-cell-qty ${cls}">${v}<small>${item.unit}</small></span></span>`;
+    })
+    .join('');
   return `<div class="item-card ${statusClassForCard(total,item.min)}" id="${eid(item.name,'card')}">
     <div class="card-header">
       <div class="item-title-wrap">
         <div class="item-name">${escapeHtml(item.name)}</div>
-        <div class="item-meta">カテゴリ: ${escapeHtml(item.category)} ／ 使用頻度: <span id="USAGE_${eid(item.name,'')}">${usage}</span></div>
+        <div class="item-meta">${escapeHtml(item.category)} ／ 使用頻度 <span id="USAGE_${eid(item.name,'')}">${usage}</span></div>
       </div>
       <div class="item-header-actions">
         <button class="edit-btn" data-edit-mode="store" data-edit-name="${escapeHtml(item.name)}">✎ 編集</button>
@@ -1362,6 +1371,8 @@ function renderStoreCard(item, focusStoreName=null){
       <span class="${statusBadgeClass(total,item.min)}" id="BAD_${eid(item.name,'')}">${getStatusText(total,item.min)}</span>
       <span class="total-label">合計 <span class="total-strong ${statusClassForTotal(total,item.min)}" id="TOT_${eid(item.name,'')}">${total}</span> ${item.unit}</span>
     </div>
+
+    <div class="store-cells-row">${compactSummary}</div>
 
     <div class="store-rows">${storeRowsHtml}</div>
 

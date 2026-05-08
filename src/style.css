@@ -1,25 +1,30 @@
 :root{
-  --bg:#f6f1e8;
-  --surface:#fffdfa;
-  --surface-2:#fff;
-  --line:#e8dfd3;
-  --text:#2f2a26;
-  --muted:#8f867c;
-  --navy:#203a5a;
-  --navy-2:#314f75;
-  --red:#bb4b45;
-  --orange:#d89035;
-  --green:#3f7b5d;
-  --purple:#67477d;
-  --shadow:0 10px 24px rgba(32,58,90,.08);
-  --radius:18px;
+  --bg:#f5f7fa;
+  --surface:#ffffff;
+  --surface-2:#ffffff;
+  --line:#e2e8f0;
+  --line-2:#cbd5e1;
+  --text:#1f2937;
+  --muted:#64748b;
+  --navy:#0f766e;       /* zaico風ティール */
+  --navy-2:#0e7490;     /* zaico風シアン */
+  --primary:#0891b2;
+  --primary-soft:#ecfeff;
+  --red:#dc2626;
+  --orange:#ea580c;
+  --green:#059669;
+  --purple:#7c3aed;
+  --shadow:0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
+  --shadow-md:0 4px 12px rgba(15,23,42,.08);
+  --radius:12px;
+  --radius-sm:8px;
 }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Sans','Yu Gothic UI',sans-serif;
-  background:linear-gradient(180deg,#f8f5ee 0%,#f4eee4 100%);
+  background:var(--bg);
   color:var(--text);
 }
 button,input,select{font:inherit}
@@ -220,8 +225,8 @@ a{color:inherit}
 .item-card,.apt-card,.refill-card,.order-card,.log-card{
   background:var(--surface);
   border:1px solid var(--line);
-  border-radius:22px;
-  padding:14px;
+  border-radius:12px;
+  padding:12px 14px;
   box-shadow:var(--shadow);
   position:relative;
   overflow:hidden;
@@ -230,9 +235,9 @@ a{color:inherit}
 .apt-card + .apt-card,
 .refill-card + .refill-card,
 .order-card + .order-card,
-.log-card + .log-card{margin-top:12px}
+.log-card + .log-card{margin-top:8px}
 .item-card::before,.apt-card::before,.order-card::before,.refill-card::before{
-  content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--green);
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green);
 }
 .item-card.warning::before,.apt-card.warning::before{background:var(--orange)}
 .item-card.danger::before,.apt-card.danger::before,.order-card::before,.refill-card::before{background:var(--red)}
@@ -254,14 +259,16 @@ a{color:inherit}
 }
 .badge{
   display:inline-flex;align-items:center;justify-content:center;
-  min-height:28px;padding:5px 11px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;
+  min-height:24px;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap;
+  border:1px solid transparent;
 }
-.badge-danger{background:#fde8e7;color:var(--red)}
-.badge-warning{background:#fff2df;color:#b86f0e}
-.badge-success{background:#e8f5ee;color:var(--green)}
-/* 色で瞬間判断 UX */
-.item-card.danger,.apt-card.danger{background:#fef8f8}
-.item-card.warning,.apt-card.warning{background:#fffdf4}
+.badge-danger{background:#fee2e2;color:#991b1b;border-color:#fecaca}
+.badge-warning{background:#fef3c7;color:#92400e;border-color:#fde68a}
+.badge-success{background:#d1fae5;color:#065f46;border-color:#a7f3d0}
+.badge-info{background:#cffafe;color:#155e75;border-color:#a5f3fc}
+/* zaico風: 背景は白のままにし、左ボーダーで状態を示す */
+.item-card.danger,.apt-card.danger{background:#fff}
+.item-card.warning,.apt-card.warning{background:#fff}
 .total-danger{color:var(--red)!important;font-weight:900}
 .total-warning{color:var(--orange)!important;font-weight:900}
 .total-ok{color:var(--green)!important}
@@ -297,9 +304,25 @@ a{color:inherit}
 .total-strong{color:var(--text);font-weight:800}
 
 .store-rows,.detail-stack{
-  margin-top:12px;padding-top:12px;border-top:1px solid #efe5d9;
-  display:flex;flex-direction:column;gap:10px
+  margin-top:10px;padding-top:10px;border-top:1px solid var(--line);
+  display:flex;flex-direction:column;gap:8px
 }
+.store-cells-row{
+  display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;
+}
+.store-cell{
+  flex:1;min-width:0;
+  display:flex;flex-direction:column;align-items:center;
+  padding:8px 10px;border-radius:8px;background:#f8fafc;border:1px solid var(--line);
+  gap:2px;
+}
+.store-cell-name{font-size:11px;color:var(--muted);font-weight:700;line-height:1}
+.store-cell-qty{font-size:20px;font-weight:800;color:var(--text);line-height:1.1}
+.store-cell-qty small{font-size:10px;font-weight:600;color:var(--muted);margin-left:2px}
+.store-cell-qty.qty-danger{color:var(--red)}
+.store-cell-qty.qty-warning{color:var(--orange)}
+.store-cell-qty.qty-ok{color:var(--green)}
+.store-cell-qty.qty-excess{color:var(--primary)}
 .store-row,.apt-stock-row{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
 }
