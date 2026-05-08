@@ -522,6 +522,17 @@ let orderChecks = load('inv_order_checks_v1', {});
 let modalState = {};
 let selectedStores = ['神楽坂','男マエ食道'];
 let quickFilter = 'all';
+// 検索/絞り込み状態(scopeごと: 'store' / 'apt')
+let searchState = {
+  store: { text:'', category:'all', status:'all' },
+  apt:   { text:'', category:'all', status:'all' }
+};
+// ひらがな↔カタカナ正規化(検索の柔軟性)
+function normalizeJa(str){
+  if(!str) return '';
+  return String(str).toLowerCase()
+    .replace(/[ぁ-ん]/g, ch => String.fromCharCode(ch.charCodeAt(0) + 0x60));
+}
 let storeViewFilter = localStorage.getItem('inv_store_view_filter_v1') || 'all';
 let storeChecklist = load('inv_store_checklist_v1', {});
 let lastTransferAction = null;
@@ -588,6 +599,7 @@ function setStoreViewFilter(value){
   localStorage.setItem('inv_store_view_filter_v1', value);
   updateStoreViewButtons();
   renderStore();
+  updateActiveFilterBanner('store');
 }
 function updateStoreViewButtons(){
   const map = {
@@ -1135,6 +1147,81 @@ function renderDashboard(){
   `;
   document.getElementById('hero-stamp').textContent = '最終更新 ' + nowText();
 }
+function onSearchInput(scope){
+  const el = document.getElementById('search-' + scope + '-text');
+  if(!el) return;
+  searchState[scope].text = el.value || '';
+  // クリアボタンの表示制御
+  const clearBtn = document.getElementById('search-' + scope + '-clear');
+  if(clearBtn) clearBtn.style.display = el.value ? 'flex' : 'none';
+  if(scope === 'store') renderStore(); else renderApt();
+  updateActiveFilterBanner(scope);
+}
+function clearSearch(scope){
+  const el = document.getElementById('search-' + scope + '-text');
+  if(el) el.value = '';
+  searchState[scope].text = '';
+  const clearBtn = document.getElementById('search-' + scope + '-clear');
+  if(clearBtn) clearBtn.style.display = 'none';
+  if(scope === 'store') renderStore(); else renderApt();
+  updateActiveFilterBanner(scope);
+}
+function setCategoryChip(scope, cat){
+  searchState[scope].category = cat;
+  const chips = document.querySelectorAll('#category-chips-' + scope + ' .chip');
+  chips.forEach(c => c.classList.toggle('active', c.dataset.cat === cat));
+  if(scope === 'store') renderStore(); else renderApt();
+  updateActiveFilterBanner(scope);
+}
+function setStatusChip(scope, st){
+  searchState[scope].status = st;
+  const chips = document.querySelectorAll('#status-chips-' + scope + ' .chip');
+  chips.forEach(c => c.classList.toggle('active', c.dataset.st === st));
+  if(scope === 'store') renderStore(); else renderApt();
+  updateActiveFilterBanner(scope);
+}
+function clearAllFilters(scope){
+  searchState[scope] = { text:'', category:'all', status:'all' };
+  const txtEl = document.getElementById('search-' + scope + '-text');
+  if(txtEl) txtEl.value = '';
+  const clearBtn = document.getElementById('search-' + scope + '-clear');
+  if(clearBtn) clearBtn.style.display = 'none';
+  document.querySelectorAll('#category-chips-' + scope + ' .chip').forEach(c => c.classList.toggle('active', c.dataset.cat === 'all'));
+  document.querySelectorAll('#status-chips-' + scope + ' .chip').forEach(c => c.classList.toggle('active', c.dataset.st === 'all'));
+  if(scope === 'store'){
+    setStoreViewFilter('all');
+    const visEl = document.getElementById('filter-check-visibility');
+    if(visEl) visEl.value = 'unchecked';
+    renderStore();
+  }else{
+    renderApt();
+  }
+  updateActiveFilterBanner(scope);
+}
+function updateActiveFilterBanner(scope){
+  const banner = document.getElementById('active-filter-banner-' + scope);
+  const text = document.getElementById('active-filter-text-' + scope);
+  if(!banner || !text) return;
+  const s = searchState[scope];
+  const parts = [];
+  if(s.text) parts.push(`"${s.text}"`);
+  if(s.category && s.category !== 'all') parts.push(s.category);
+  if(s.status && s.status !== 'all'){
+    const map = { danger:'🔴 要補充', warning:'🟡 要注意', excess:'🔵 過剰', unchecked:'☐ 未確認' };
+    parts.push(map[s.status] || s.status);
+  }
+  if(scope === 'store'){
+    if(storeViewFilter && storeViewFilter !== 'all') parts.push(storeViewFilter + 'のみ');
+    const visEl = document.getElementById('filter-check-visibility');
+    if(visEl && visEl.value === 'checked') parts.push('チェック済みのみ');
+  }
+  if(parts.length === 0){
+    banner.style.display = 'none';
+    return;
+  }
+  text.textContent = '絞り込み: ' + parts.join(' + ');
+  banner.style.display = 'flex';
+}
 function setQuickFilter(val){
   quickFilter = val;
 
@@ -1228,7 +1315,7 @@ function toggleFilterPanel(scope){
   const isOpen = panel.classList.toggle("open");
   btn.classList.toggle("open", isOpen);
 }
-function updateFilters(){ renderStore(); }
+function updateFilters(){ renderStore(); updateActiveFilterBanner('store'); }
 function sortItems(items, sortValue){
   const arr = [...items];
   if(sortValue === '使用頻度順'){
@@ -1251,16 +1338,35 @@ function passStoreCheckVisibility(itemName, storeName){
   return !checked; // 'unchecked'
 }
 function filteredStoreItems(){
-  populateStoreSearch();
-  const q = (document.getElementById('search-store')?.value || '').trim().toLowerCase();
-  const category = document.getElementById('filter-category')?.value || 'all';
+  const s = searchState.store;
+  const qNorm = normalizeJa(s.text.trim());
   const sortValue = document.getElementById('sort-store')?.value || '不足順';
   let list = ITEMS.filter(item => {
-    const matchesQ = !q || item.name.toLowerCase().includes(q);
-    const matchesCategory = category === 'all' || item.category === category;
-    const matchesQuick = quickFilter === 'all' ||
-      (quickFilter === 'danger' ? getTotal(item) <= item.min : item.category === quickFilter);
-    return matchesQ && matchesCategory && matchesQuick;
+    // フリーテキスト検索(ひらがな/カタカナ正規化、部分一致)
+    const matchesQ = !qNorm || normalizeJa(item.name).includes(qNorm);
+    // カテゴリチップ
+    const matchesCategory = s.category === 'all' || item.category === s.category;
+    // 状態チップ
+    const total = getTotal(item);
+    let matchesStatus = true;
+    if(s.status === 'danger'){
+      matchesStatus = total <= item.min;
+    }else if(s.status === 'warning'){
+      // 要注意: 任意店舗が要注意レベル(min<v<=min*1.5的)
+      matchesStatus = item.stores.some(st => {
+        const v = storeStock[item.name]?.[st] ?? 0;
+        return storeQtyStatusClass(v, item, st) === 'qty-warning';
+      });
+    }else if(s.status === 'excess'){
+      matchesStatus = item.stores.some(st => {
+        const v = storeStock[item.name]?.[st] ?? 0;
+        return storeQtyStatusClass(v, item, st) === 'qty-excess';
+      });
+    }else if(s.status === 'unchecked'){
+      // 未チェック店舗が1つでもあれば対象
+      matchesStatus = item.stores.some(st => !isStoreChecked(item.name, st));
+    }
+    return matchesQ && matchesCategory && matchesStatus;
   });
   return sortItems(list, sortValue);
 }
@@ -1619,16 +1725,16 @@ function updateAptCardUI(index){
   card.className = `apt-card ${statusClassForCard(item.stock, item.min)}`;
 }
 function renderApt(){
-  populateAptSearch();
-  const q = (document.getElementById('search-apt')?.value || '').trim().toLowerCase();
-  const category = document.getElementById('filter-apt-category')?.value || 'all';
+  const s = searchState.apt;
+  const qNorm = normalizeJa(s.text.trim());
   const sortValue = document.getElementById('sort-apt')?.value || '不足順';
   let list = aptStock.filter(item => {
-    const matchesQ = !q || item.name.toLowerCase().includes(q);
-    const matchesCategory = category === 'all' || item.category === category;
-    const matchesQuick = quickFilter === 'all' ||
-      (quickFilter === 'danger' ? item.stock <= item.min : item.category === quickFilter);
-    return matchesQ && matchesCategory && matchesQuick;
+    const matchesQ = !qNorm || normalizeJa(item.name).includes(qNorm);
+    const matchesCategory = s.category === 'all' || item.category === s.category;
+    let matchesStatus = true;
+    if(s.status === 'danger') matchesStatus = item.stock <= item.min;
+    else if(s.status === 'warning') matchesStatus = item.stock > item.min && item.stock <= (item.min || 0) * 1.5;
+    return matchesQ && matchesCategory && matchesStatus;
   });
   if(sortValue === '使用頻度順'){
     list.sort((a,b) => getUsageScore(b.name) - getUsageScore(a.name) || a.name.localeCompare(b.name,'ja'));

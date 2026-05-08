@@ -11,12 +11,12 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260423d">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260423d">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260423d">
-<link rel="manifest" href="manifest.webmanifest?v=20260423d">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260423e">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260423e">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260423e">
+<link rel="manifest" href="manifest.webmanifest?v=20260423e">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260423d">
+<link rel="stylesheet" href="src/style.css?v=20260423e">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,7 +36,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section">
-    <img src="icons/icon-512.png?v=20260423d" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260423e" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -58,8 +58,31 @@
 
   <div class="view-wrap">
     <div id="view-store">
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="search" id="search-store-text" class="search-text-input" placeholder="商品名で検索…" oninput="onSearchInput('store')" autocomplete="off">
+        <button class="search-clear" id="search-store-clear" onclick="clearSearch('store')" aria-label="検索をクリア">×</button>
+      </div>
+      <div class="chip-row" id="category-chips-store">
+        <button class="chip active" data-cat="all" onclick="setCategoryChip('store','all')">すべて</button>
+        <button class="chip" data-cat="食材" onclick="setCategoryChip('store','食材')">🥬 食材</button>
+        <button class="chip" data-cat="ドリンク" onclick="setCategoryChip('store','ドリンク')">🥤 ドリンク</button>
+        <button class="chip" data-cat="消耗品" onclick="setCategoryChip('store','消耗品')">🧴 消耗品</button>
+      </div>
+      <div class="chip-row" id="status-chips-store">
+        <button class="chip active" data-st="all" onclick="setStatusChip('store','all')">全部</button>
+        <button class="chip" data-st="danger" onclick="setStatusChip('store','danger')">🔴 要補充</button>
+        <button class="chip" data-st="warning" onclick="setStatusChip('store','warning')">🟡 要注意</button>
+        <button class="chip" data-st="excess" onclick="setStatusChip('store','excess')">🔵 過剰</button>
+        <button class="chip" data-st="unchecked" onclick="setStatusChip('store','unchecked')">☐ 未確認</button>
+      </div>
+      <div class="active-filter-banner" id="active-filter-banner-store" style="display:none">
+        <span class="active-filter-icon">🔎</span>
+        <span class="active-filter-text" id="active-filter-text-store"></span>
+        <button class="active-filter-clear" onclick="clearAllFilters('store')">解除</button>
+      </div>
       <div class="filter-toggle-wrap">
-        <button class="filter-toggle-btn" id="filter-toggle-store" onclick="toggleFilterPanel('store')">検索・並び替え <span class="arrow">▼</span></button>
+        <button class="filter-toggle-btn" id="filter-toggle-store" onclick="toggleFilterPanel('store')">並び替え・店舗切替 <span class="arrow">▼</span></button>
       </div>
       <div class="filter-panel" id="filter-panel-store">
         <div class="toolbar-row store-switch-row">
@@ -68,15 +91,6 @@
           <button class="store-switch-btn" id="store-view-otokomae" onclick="setStoreViewFilter('男マエ食道')">男マエ食道だけ表示</button>
         </div>
         <div class="toolbar-row">
-          <select id="search-store" class="search-input" onchange="updateFilters()">
-            <option value="">商品名: すべて</option>
-          </select>
-          <select id="filter-category" class="toolbar-select" onchange="updateFilters()">
-            <option value="all">カテゴリ: すべて</option>
-            <option value="消耗品">カテゴリ: 消耗品</option>
-            <option value="ドリンク">カテゴリ: ドリンク</option>
-            <option value="食材">カテゴリ: 食材</option>
-          </select>
           <select id="filter-check-visibility" class="toolbar-select" onchange="updateFilters()">
             <option value="unchecked" selected>表示: 未チェックのみ</option>
             <option value="all">表示: すべて</option>
@@ -84,6 +98,9 @@
           </select>
         </div>
       </div>
+      <!-- 互換性のため残す(新コードからは未使用) -->
+      <select id="search-store" style="display:none"><option value=""></option></select>
+      <select id="filter-category" style="display:none"><option value="all"></option></select>
 
       <div class="section-label">
         <span>Store Inventory</span>
@@ -103,22 +120,30 @@
     </div>
 
     <div id="view-apt" style="display:none">
-      <div class="filter-toggle-wrap">
-        <button class="filter-toggle-btn" id="filter-toggle-apt" onclick="toggleFilterPanel('apt')">検索・並び替え <span class="arrow">▼</span></button>
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="search" id="search-apt-text" class="search-text-input" placeholder="商品名で検索…" oninput="onSearchInput('apt')" autocomplete="off">
+        <button class="search-clear" id="search-apt-clear" onclick="clearSearch('apt')" aria-label="検索をクリア">×</button>
       </div>
-      <div class="filter-panel" id="filter-panel-apt">
-        <div class="toolbar-row">
-          <select id="search-apt" class="search-input" onchange="renderApt()">
-            <option value="">商品名: すべて</option>
-          </select>
-          <select id="filter-apt-category" class="toolbar-select" onchange="renderApt()">
-            <option value="all">カテゴリ: すべて</option>
-            <option value="消耗品">カテゴリ: 消耗品</option>
-            <option value="ドリンク">カテゴリ: ドリンク</option>
-            <option value="食材">カテゴリ: 食材</option>
-          </select>
-        </div>
+      <div class="chip-row" id="category-chips-apt">
+        <button class="chip active" data-cat="all" onclick="setCategoryChip('apt','all')">すべて</button>
+        <button class="chip" data-cat="食材" onclick="setCategoryChip('apt','食材')">🥬 食材</button>
+        <button class="chip" data-cat="ドリンク" onclick="setCategoryChip('apt','ドリンク')">🥤 ドリンク</button>
+        <button class="chip" data-cat="消耗品" onclick="setCategoryChip('apt','消耗品')">🧴 消耗品</button>
       </div>
+      <div class="chip-row" id="status-chips-apt">
+        <button class="chip active" data-st="all" onclick="setStatusChip('apt','all')">全部</button>
+        <button class="chip" data-st="danger" onclick="setStatusChip('apt','danger')">🔴 要補充</button>
+        <button class="chip" data-st="warning" onclick="setStatusChip('apt','warning')">🟡 要注意</button>
+      </div>
+      <div class="active-filter-banner" id="active-filter-banner-apt" style="display:none">
+        <span class="active-filter-icon">🔎</span>
+        <span class="active-filter-text" id="active-filter-text-apt"></span>
+        <button class="active-filter-clear" onclick="clearAllFilters('apt')">解除</button>
+      </div>
+      <!-- 互換性のため残す(新コードからは未使用) -->
+      <select id="search-apt" style="display:none"><option value=""></option></select>
+      <select id="filter-apt-category" style="display:none"><option value="all"></option></select>
       <div class="section-label">
         <span>Apartment Stock</span>
         <span class="section-pill" id="apt-count-pill">0件</span>
@@ -390,6 +415,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260423d"></script>
+<script src="src/main.js?v=20260423e"></script>
 </body>
 </html>
