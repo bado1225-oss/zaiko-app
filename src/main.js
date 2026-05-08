@@ -1431,12 +1431,11 @@ function renderStoreCard(item, focusStoreName=null){
       ? `<span class="store-check-note">${new Date(checkedEntry.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>`
       : '<span class="store-check-note">未確認</span>';
     const storeMaxVal = getStoreMax(item, store);
-    const storeMinVal = getStoreMin(item, store);
     const excessBadge = storeMaxVal != null && v >= storeMaxVal
-      ? `<span class="store-excess-badge">🔵 過剰</span>` : '';
-    const thresholdNote = `<div class="store-threshold-note">最低 ${storeMinVal}${item.unit}${storeMaxVal != null ? ` ／ 過剰 ${storeMaxVal}${item.unit}` : ''}</div>`;
+      ? `<span class="store-excess-badge">過剰</span>` : '';
+    // しきい値の詳細は編集モーダルで確認できるため、行内の表示は省略
     return `<div class="store-row">
-      <div class="store-left"><div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item, store)}"></span>${store}${excessBadge}</div>${thresholdNote}</div>
+      <div class="store-left"><div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item, store)}"></span>${store}${excessBadge}</div></div>
       <div class="store-row-right">
         <span class="qty-val tappable ${storeQtyStatusClass(v, item, store)}" id="${eid(item.name, store)}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'store',name:'${encodeURIComponent(item.name)}',store:'${encodeURIComponent(store)}'})">${v}</span>
         <span class="qty-unit">${item.unit}</span>
@@ -1466,10 +1465,10 @@ function renderStoreCard(item, focusStoreName=null){
     <div class="card-header">
       <div class="item-title-wrap">
         <div class="item-name">${escapeHtml(item.name)}</div>
-        <div class="item-meta">${escapeHtml(item.category)} ／ 使用頻度 <span id="USAGE_${eid(item.name,'')}">${usage}</span></div>
+        <div class="item-meta">${escapeHtml(item.category)} ／ 頻度 <span id="USAGE_${eid(item.name,'')}">${usage}</span></div>
       </div>
       <div class="item-header-actions">
-        <button class="edit-btn" data-edit-mode="store" data-edit-name="${escapeHtml(item.name)}">✎ 編集</button>
+        <button class="edit-btn" data-edit-mode="store" data-edit-name="${escapeHtml(item.name)}">✎</button>
       </div>
     </div>
 
@@ -1756,18 +1755,13 @@ function renderApt(){
       <div class="apt-header">
         <div class="apt-title-wrap">
           <div class="apt-name">${escapeHtml(item.name)}</div>
-          <div class="apt-meta">カテゴリ: ${escapeHtml(item.category)} ／ 仕入先: ${item.supplierUrl ? `<a href="${item.supplierUrl}" style="color:var(--navy);text-decoration:none" target="_blank">${escapeHtml(item.supplier)}</a>` : escapeHtml(item.supplier || '—')}</div>
+          <div class="apt-meta">${escapeHtml(item.category)} ／ ${item.supplierUrl ? `<a href="${item.supplierUrl}" style="color:var(--primary);text-decoration:none" target="_blank">${escapeHtml(item.supplier)}</a>` : escapeHtml(item.supplier || '—')}</div>
         </div>
-        <div class="apt-header-actions">
-          <span class="${statusBadgeClass(item.stock,item.min)}" id="AB_${i}">${getStatusText(item.stock,item.min)}</span>
-          <button class="edit-btn" data-edit-mode="apt" data-edit-idx="${i}">✎ 編集</button>
-        </div>
+        <button class="edit-btn" data-edit-mode="apt" data-edit-idx="${i}">✎</button>
       </div>
       <div class="apt-stock-row">
-        <div>
-          <div class="small-note">現在の在庫</div>
-          <div class="small-note">最低在庫: <strong>${item.min} ${item.unit}</strong></div>
-          <div class="small-note">自動発注数: <strong><span id="AO_${i}">${recommended}</span> ${item.unit}</strong></div>
+        <div class="apt-stock-meta">
+          <div class="apt-stock-label">最低 <strong>${item.min}${item.unit}</strong> ／ 発注 <strong><span id="AO_${i}">${recommended}</span>${item.unit}</strong></div>
         </div>
         <div class="qty-display">
           <span class="qty-val tappable ${statusClassForTotal(item.stock,item.min)}" id="AV_${i}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'apt',idx:${i}})">${item.stock}</span>
