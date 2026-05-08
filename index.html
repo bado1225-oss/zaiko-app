@@ -11,12 +11,12 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260423a">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260423a">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260423a">
-<link rel="manifest" href="manifest.webmanifest?v=20260423a">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260423b">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260423b">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260423b">
+<link rel="manifest" href="manifest.webmanifest?v=20260423b">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260423a">
+<link rel="stylesheet" href="src/style.css?v=20260423b">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,7 +36,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section">
-    <img src="icons/icon-512.png?v=20260423a" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260423b" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -298,6 +298,12 @@
       <button class="modal-submit" id="modal-submit-btn" onclick="submitModal()">追加する</button>
     </div>
 
+    <div id="copy-to-apt-section" style="display:none">
+      <hr class="modal-divider">
+      <button class="modal-copy" onclick="copyStoreItemToApt()">📋 アパートにもこの商品を作成</button>
+      <div class="form-help" style="margin-top:6px">店舗で登録済みの商品をアパートでも管理できるようにします</div>
+    </div>
+
     <div id="delete-section" style="display:none">
       <hr class="modal-divider">
       <button class="modal-delete" onclick="deleteItem()">この品目を削除する</button>
@@ -384,6 +390,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260423a"></script>
+<script src="src/main.js?v=20260423b"></script>
 </body>
 </html>

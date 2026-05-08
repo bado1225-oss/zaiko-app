@@ -1339,6 +1339,9 @@ function renderStoreCard(item, focusStoreName=null){
         <span class="qty-step-group">
           <button class="qty-step-btn minus" ${v <= 0 ? 'disabled' : ''} aria-label="${store} の ${item.name} を -1" onclick="quickIncStore('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}',-1)">−</button>
           <button class="qty-step-btn plus" aria-label="${store} の ${item.name} を +1" onclick="quickIncStore('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}',1)">＋</button>
+          ${(findAptItem(item.name)?.stock ?? 0) > 0
+            ? `<button class="qty-step-btn transfer" aria-label="${store} へアパートから補充" title="アパートから補充" onclick="openManualTransfer('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}')">📦</button>`
+            : ''}
         </span>
       </div>
     </div>`;
@@ -2116,6 +2119,29 @@ function quickIncStore(encName, encStore, delta){
   const store = decodeURIComponent(encStore);
   chStore(name, store, delta).catch(e => console.error('quickIncStore:', e));
 }
+async function openManualTransfer(encodedName, encodedStore){
+  const name = decodeURIComponent(encodedName);
+  const store = decodeURIComponent(encodedStore);
+  const apt = findAptItem(name);
+  const item = ITEMS.find(i => i.name === name);
+  if(!apt || apt.stock <= 0){ alert('アパートにこの商品の在庫がありません'); return; }
+  if(!item){ alert('店舗品目が見つかりません'); return; }
+  const user = ensureActionUser();
+  if(!user) return;
+  const qtyStr = window.prompt(`${store} へアパートから何${item.unit}補充しますか?\n(アパート在庫: ${apt.stock}${item.unit})`, '1');
+  if(qtyStr == null) return;
+  const qty = parseInt(qtyStr, 10);
+  if(!Number.isFinite(qty) || qty <= 0){ alert('数量を正しく入力してください'); return; }
+  if(qty > apt.stock){ alert(`アパート在庫(${apt.stock}${item.unit})を超えています`); return; }
+  try{
+    await performTransferSingle(name, store, qty, user);
+    renderStore(); renderApt(); renderDashboard();
+    toast(`✓ ${qty}${item.unit} を ${store} へ補充しました`);
+  }catch(err){
+    console.error(err);
+    alert('補充に失敗しました: ' + (err?.message || err));
+  }
+}
 function quickIncApt(idx, delta){
   const now = Date.now();
   if(now - lastQtyStepAt < QTY_STEP_DEBOUNCE_MS) return;
@@ -2271,6 +2297,12 @@ function openModal(opts){
   }
   document.getElementById('f-stock-row').style.display = isEdit ? 'none' : 'block';
   document.getElementById('delete-section').style.display = isEdit ? 'block' : 'none';
+  // 店舗編集中で、まだアパート側に同名が登録されていない場合だけコピーボタンを表示
+  const copyEl = document.getElementById('copy-to-apt-section');
+  if(copyEl){
+    const showCopy = isEdit && opts.mode === 'store' && !aptStock.some(a => a.name === opts.editName);
+    copyEl.style.display = showCopy ? 'block' : 'none';
+  }
   document.getElementById('modal-submit-btn').textContent = isEdit ? '変更を保存する' : '追加する';
 
   if(isEdit && opts.mode === 'store'){
@@ -2624,65 +2656,124 @@ async function submitModal(){
     }
   }
 }
-function deleteItem(){
+async function copyStoreItemToApt(){
+  const {mode, editName} = modalState;
+  if(mode !== 'store' || !editName){ alert('店舗品目の編集中のみ使用できます'); return; }
+  const item = ITEMS.find(i => i.name === editName);
+  if(!item){ alert('対象の店舗品目が見つかりません'); return; }
+  if(aptStock.some(a => a.name === editName)){ alert('既にアパートに同名の商品があります'); return; }
+  const user = ensureActionUser();
+  if(!user) return;
+  // 店舗品目を元にアパート品目を作成(初期在庫0、min/target は店舗別の合計値を流用)
+  const newAptItem = normalizeAptItem({
+    name: item.name,
+    category: item.category,
+    unit: item.unit,
+    stock: 0,
+    min: Math.max(1, item.min || 1),
+    target: getTarget(item),
+    supplier: item.supplier || '—',
+    supplierUrl: item.supplierUrl || '',
+    orderQty: item.orderQty
+  });
+  aptStock.push(newAptItem);
+  persist('inv_apt_v3', aptStock, 'inv_apt_ts_v3');
+  if(isCloudReady()){
+    try{
+      const id = await cloudUpdateItem({
+        id: itemIdByName[item.name],
+        name: item.name, category: item.category, unit: item.unit,
+        supplier: item.supplier, supplierUrl: item.supplierUrl, orderQty: item.orderQty
+      }, 'upsert');
+      newAptItem.itemId = id;
+      itemIdByName[item.name] = id;
+      await cloudUpsertApartment(item.name);
+    }catch(err){
+      console.error(err);
+      alert('クラウド反映に失敗しました: ' + cloudErrorMessage(err));
+    }
+  }
+  addLog({type:'追加', scope:'アパートマスタ', itemName:item.name, user, message:'店舗品目からコピー作成(初期在庫 0' + item.unit + ')'});
+  setLastSaved('apt','inv_apt_ts_v3');
+  closeModal();
+  renderStore(); renderApt(); renderLogs(); renderDashboard();
+  toast(`✓ 「${item.name}」をアパートにコピー作成しました`);
+}
+async function deleteItem(){
   const user = localStorage.getItem('inv_user') || '担当者未設定';
   const {mode,editName,editIdx} = modalState;
   if(mode === 'store'){
     if(!confirm(`「${editName}」を削除しますか？`)) return;
-    const idx = ITEMS.findIndex(i => i.name === editName);
+    const targetName = editName;
+    const idx = ITEMS.findIndex(i => i.name === targetName);
     if(idx >= 0) ITEMS.splice(idx,1);
-    delete storeStock[editName];
-    // Clean up all name-keyed state for deleted item
+    delete storeStock[targetName];
     ['店舗不足', 'アパート発注'].forEach(scope => {
-      delete orderChecks[orderCheckKey(scope, editName)];
+      delete orderChecks[orderCheckKey(scope, targetName)];
     });
     ['店舗', 'アパート'].forEach(scope => {
-      const k = editName + '|' + scope;
+      const k = targetName + '|' + scope;
       delete shoppingPurchased[k];
       delete shoppingQtyOverrides[k];
     });
     persist('inv_order_checks_v1', orderChecks);
-    const _deletedStoreId = itemIdByName[editName];  // save before delete
-    delete itemIdByName[editName];
+    const _deletedItemId = itemIdByName[targetName];
     persist('inv_items_v3', ITEMS, null);
     persist('inv_store_v3', storeStock, 'inv_store_ts_v3');
-    if(isCloudReady() && _deletedStoreId){
-      supabaseClient.from('items').update({is_active:false}).eq('id', _deletedStoreId).then(({error})=>{
-        if(error){ console.error(error); toast('クラウド反映に失敗しました'); }
-      });
+    if(isCloudReady() && _deletedItemId){
+      try{
+        // 店舗関連レコードを削除(orphan化を防ぐ)
+        await supabaseClient.from('item_store_targets').delete().eq('item_id', _deletedItemId);
+        await supabaseClient.from('store_inventory').delete().eq('item_id', _deletedItemId);
+        // アパート側に同名品目が無ければ items マスタも完全削除
+        const aptStillHas = aptStock.some(a => a.name === targetName);
+        if(!aptStillHas){
+          await supabaseClient.from('apartment_inventory').delete().eq('item_id', _deletedItemId);
+          await supabaseClient.from('items').update({is_active:false}).eq('id', _deletedItemId);
+        }
+      }catch(err){ console.error('cloud delete:', err); toast('クラウド反映に失敗しました'); }
     }
-    addLog({type:'削除', scope:'店舗マスタ', itemName:editName, user, message:'品目を削除'});
+    if(!aptStock.some(a => a.name === targetName)) delete itemIdByName[targetName];
+    addLog({type:'削除', scope:'店舗マスタ', itemName:targetName, user, message:'品目を削除'});
     setLastSaved('store','inv_store_ts_v3');
     closeModal();
-    renderStore(); renderLogs(); renderDashboard();
-    toast(`🗑 「${editName}」を削除しました`);
+    renderStore(); renderApt(); renderLogs(); renderDashboard();
+    toast(`🗑 「${targetName}」を削除しました`);
   }else{
-    const name = aptStock[editIdx]?.name;
-    if(!confirm(`「${name}」を削除しますか？`)) return;
+    const targetName = aptStock[editIdx]?.name;
+    if(!targetName){ alert('対象の品目が見つかりません'); return; }
+    if(!confirm(`「${targetName}」を削除しますか？`)) return;
     aptStock.splice(editIdx,1);
-    // Clean up name-keyed state
     ['店舗不足', 'アパート発注'].forEach(scope => {
-      delete orderChecks[orderCheckKey(scope, name)];
+      delete orderChecks[orderCheckKey(scope, targetName)];
     });
     ['店舗', 'アパート'].forEach(scope => {
-      const k = name + '|' + scope;
+      const k = targetName + '|' + scope;
       delete shoppingPurchased[k];
       delete shoppingQtyOverrides[k];
     });
     persist('inv_order_checks_v1', orderChecks);
-    const _deletedAptId = itemIdByName[name];  // save before delete
-    delete itemIdByName[name];
+    const _deletedItemId = itemIdByName[targetName];
     persist('inv_apt_v3', aptStock, 'inv_apt_ts_v3');
-    if(isCloudReady() && _deletedAptId){
-      supabaseClient.from('items').update({is_active:false}).eq('id', _deletedAptId).then(({error})=>{
-        if(error){ console.error(error); toast('クラウド反映に失敗しました'); }
-      });
+    if(isCloudReady() && _deletedItemId){
+      try{
+        // アパート在庫の行を削除
+        await supabaseClient.from('apartment_inventory').delete().eq('item_id', _deletedItemId);
+        // 店舗側に同名品目が無ければ items マスタも完全削除
+        const storeStillHas = ITEMS.some(i => i.name === targetName);
+        if(!storeStillHas){
+          await supabaseClient.from('item_store_targets').delete().eq('item_id', _deletedItemId);
+          await supabaseClient.from('store_inventory').delete().eq('item_id', _deletedItemId);
+          await supabaseClient.from('items').update({is_active:false}).eq('id', _deletedItemId);
+        }
+      }catch(err){ console.error('cloud delete:', err); toast('クラウド反映に失敗しました'); }
     }
-    addLog({type:'削除', scope:'アパートマスタ', itemName:name, user, message:'品目を削除'});
+    if(!ITEMS.some(i => i.name === targetName)) delete itemIdByName[targetName];
+    addLog({type:'削除', scope:'アパートマスタ', itemName:targetName, user, message:'品目を削除'});
     setLastSaved('apt','inv_apt_ts_v3');
     closeModal();
-    renderApt(); renderLogs(); renderDashboard();
-    toast(`🗑 「${name}」を削除しました`);
+    renderStore(); renderApt(); renderLogs(); renderDashboard();
+    toast(`🗑 「${targetName}」を削除しました`);
   }
 }
 function toast(msg){
@@ -2769,7 +2860,10 @@ function renderShopping(){
                supplier:item.supplier||'仕入れ先未設定',
                qty:qty, scope:'アパート', hasApt:true };
     });
-  var allItems = storeItems.concat(aptItems);
+  // 重複排除: 同じ商品名がアパート側にも存在する場合、店舗エントリを除外
+  var aptNames = new Set(aptItems.map(function(i){ return i.name; }));
+  var storeOnlyItems = storeItems.filter(function(i){ return !aptNames.has(i.name); });
+  var allItems = aptItems.concat(storeOnlyItems);
   var pill = document.getElementById('shopping-count-pill');
   if(pill) pill.textContent = allItems.length + '件';
   var container = document.getElementById('shopping-items');
