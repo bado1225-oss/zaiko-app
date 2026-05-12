@@ -1123,8 +1123,9 @@ function ensureActionUser(){
   return localStorage.getItem('inv_user') || askUserName();
 }
 function dashboardStats(){
-  const storeIssues = new Set(ITEMS.filter(item => getTotal(item) <= item.min).map(i => i.name));
-  const aptIssues = new Set(aptStock.filter(item => item.stock <= item.min).map(i => i.name));
+  // 補充必要は店舗別の不足ロジックに統一(min=0 stock=0 の品目を誤判定しない)
+  const storeIssues = new Set(ITEMS.filter(item => item.stores.some(s => getStoreShortage(item, s) > 0)).map(i => i.name));
+  const aptIssues = new Set(aptStock.filter(item => item.min > 0 && item.stock <= item.min).map(i => i.name));
   const allNames = new Set([...ITEMS.map(i => i.name), ...aptStock.map(i => i.name)]);
   const totalItemCount = allNames.size;
   const refillCount = storeIssues.size;
@@ -1363,7 +1364,7 @@ function filteredStoreItems(){
     const total = getTotal(item);
     let matchesStatus = true;
     if(s.status === 'danger'){
-      matchesStatus = total <= item.min;
+      matchesStatus = itemNeedsRefill(item);
     }else if(s.status === 'warning'){
       // 要注意: 任意店舗が要注意レベル(min<v<=min*1.5的)
       matchesStatus = item.stores.some(st => {
@@ -1460,6 +1461,9 @@ function renderStoreCard(item, focusStoreName=null){
           ${(findAptItem(item.name)?.stock ?? 0) > 0
             ? `<button class="qty-step-btn transfer" aria-label="${store} へアパートから補充" title="アパートから補充" onclick="openManualTransfer('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}')">📦</button>`
             : ''}
+          ${item.stores.length > 1 && v > 0
+            ? `<button class="qty-step-btn store-move" aria-label="${store} から他店舗へ移動" title="他店舗へ移動" onclick="openInterStoreTransfer('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}')">🔄</button>`
+            : ''}
         </span>
       </div>
     </div>`;
@@ -1478,7 +1482,10 @@ function renderStoreCard(item, focusStoreName=null){
     <div class="card-header">
       <div class="item-title-wrap">
         <div class="item-name">${escapeHtml(item.name)}</div>
-        <div class="item-meta">${escapeHtml(item.category)} ／ 頻度 <span id="USAGE_${eid(item.name,'')}">${usage}</span></div>
+        <div class="item-meta">
+          <span class="category-tag ${categoryTagClass(item.category)}">${categoryIcon(item.category)} ${escapeHtml(item.category)}</span>
+          <span class="item-meta-sub">頻度 <span id="USAGE_${eid(item.name,'')}">${usage}</span></span>
+        </div>
       </div>
       <div class="item-header-actions">
         <button class="edit-btn" data-edit-mode="store" data-edit-name="${escapeHtml(item.name)}">✎</button>
@@ -1533,9 +1540,13 @@ function renderStore(){
   renderAllTransferQtyControls();
 }
 
+// 補充判定: 店舗別の不足(getStoreShortage > 0)が1つでもあるか
+function itemNeedsRefill(item){
+  return item.stores.some(s => getStoreShortage(item, s) > 0);
+}
 function renderRefill(){
   const c = document.getElementById('refill-items');
-  const list = ITEMS.filter(item => getTotal(item) <= item.min);
+  const list = ITEMS.filter(itemNeedsRefill);
   document.getElementById('refill-count-pill').textContent = list.length + '件';
   if(!list.length){
     c.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>補充が必要な商品はありません</div>';
@@ -1635,7 +1646,7 @@ function makeOrderCard({scope,name,unit,min,target,supplier,supplierUrl,orderQty
 //   1. アパート在庫が最低以下 + supplierUrl ある apt 品目
 //   2. 店舗で不足 + アパートに在庫なし(or 未登録) + supplierUrl ある store 品目
 function getOrderLists(){
-  const aptList = aptStock.filter(item => item.stock <= item.min && item.supplierUrl);
+  const aptList = aptStock.filter(item => item.min > 0 && item.stock <= item.min && item.supplierUrl);
   const aptNames = new Set(aptList.map(a => a.name));
   const storeShortageList = ITEMS.filter(item => {
     if(!item.supplierUrl) return false;
@@ -1768,7 +1779,10 @@ function renderApt(){
       <div class="apt-header">
         <div class="apt-title-wrap">
           <div class="apt-name">${escapeHtml(item.name)}</div>
-          <div class="apt-meta">${escapeHtml(item.category)} ／ ${item.supplierUrl ? `<a href="${item.supplierUrl}" style="color:var(--primary);text-decoration:none" target="_blank">${escapeHtml(item.supplier)}</a>` : escapeHtml(item.supplier || '—')}</div>
+          <div class="apt-meta">
+          <span class="category-tag ${categoryTagClass(item.category)}">${categoryIcon(item.category)} ${escapeHtml(item.category)}</span>
+          <span class="item-meta-sub">${item.supplierUrl ? `<a href="${item.supplierUrl}" style="color:var(--primary);text-decoration:none" target="_blank">${escapeHtml(item.supplier)}</a>` : escapeHtml(item.supplier || '—')}</span>
+        </div>
         </div>
         <button class="edit-btn" data-edit-mode="apt" data-edit-idx="${i}">✎</button>
       </div>
@@ -2243,6 +2257,44 @@ function quickIncStore(encName, encStore, delta){
   const store = decodeURIComponent(encStore);
   chStore(name, store, delta).catch(e => console.error('quickIncStore:', e));
 }
+async function openInterStoreTransfer(encodedName, encodedFromStore){
+  const name = decodeURIComponent(encodedName);
+  const fromStore = decodeURIComponent(encodedFromStore);
+  const item = ITEMS.find(i => i.name === name);
+  if(!item){ alert('店舗品目が見つかりません'); return; }
+  const fromStock = storeStock[name]?.[fromStore] ?? 0;
+  if(fromStock <= 0){ alert(`${fromStore} に在庫がありません`); return; }
+  const others = item.stores.filter(s => s !== fromStore);
+  if(others.length === 0){ alert('移動先の店舗がありません'); return; }
+  let toStore = others[0];
+  if(others.length > 1){
+    const choice = window.prompt(`移動先を選んでください\n${others.map((s,i) => `${i+1}: ${s}`).join('\n')}`, '1');
+    if(choice == null) return;
+    const idx = parseInt(choice, 10) - 1;
+    if(!Number.isFinite(idx) || idx < 0 || idx >= others.length){ alert('正しい番号を入力してください'); return; }
+    toStore = others[idx];
+  }
+  const qtyStr = window.prompt(`${fromStore} → ${toStore}\n何${item.unit}移動しますか?\n(${fromStore} 在庫: ${fromStock}${item.unit})`, '1');
+  if(qtyStr == null) return;
+  const qty = parseInt(qtyStr, 10);
+  if(!Number.isFinite(qty) || qty <= 0){ alert('数量を正しく入力してください'); return; }
+  if(qty > fromStock){ alert(`${fromStore} 在庫(${fromStock}${item.unit})を超えています`); return; }
+  const user = ensureActionUser();
+  if(!user) return;
+  try{
+    // 1. 移動元から減算
+    await chStore(name, fromStore, -qty, user);
+    // 2. 移動先に加算
+    await chStore(name, toStore, +qty, user);
+    addLog({type:'店舗間移動', scope:`${fromStore}→${toStore}`, itemName:name, user, delta:qty,
+      message:`${qty}${item.unit} を ${fromStore} から ${toStore} へ移動`});
+    renderStore(); renderDashboard();
+    toast(`✓ ${qty}${item.unit} を ${fromStore} → ${toStore}`);
+  }catch(err){
+    console.error(err);
+    alert('店舗間移動に失敗しました: ' + (err?.message || err));
+  }
+}
 async function openManualTransfer(encodedName, encodedStore){
   const name = decodeURIComponent(encodedName);
   const store = decodeURIComponent(encodedStore);
@@ -2265,6 +2317,18 @@ async function openManualTransfer(encodedName, encodedStore){
     console.error(err);
     alert('補充に失敗しました: ' + (err?.message || err));
   }
+}
+function categoryTagClass(cat){
+  if(cat === '食材') return 'cat-food';
+  if(cat === 'ドリンク') return 'cat-drink';
+  if(cat === '消耗品') return 'cat-shouhin';
+  return 'cat-other';
+}
+function categoryIcon(cat){
+  if(cat === '食材') return '🥬';
+  if(cat === 'ドリンク') return '🥤';
+  if(cat === '消耗品') return '🧴';
+  return '📦';
 }
 function quickIncApt(idx, delta){
   const now = Date.now();
