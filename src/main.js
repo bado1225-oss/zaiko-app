@@ -1128,23 +1128,42 @@ function askUserName(){
 function ensureActionUser(){
   return localStorage.getItem('inv_user') || askUserName();
 }
+// 店頭購入が必要な商品(supplierUrl 未設定で不足している品目)
+function getShoppingLists(){
+  const storeItems = ITEMS.filter(item => {
+    const key = item.name + '|店舗';
+    return itemNeedsRefill(item) && !item.supplierUrl && !shoppingPurchased[key];
+  });
+  const aptItems = aptStock.filter(item => {
+    const key = item.name + '|アパート';
+    return item.min > 0 && item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
+  });
+  const aptNames = new Set(aptItems.map(i => i.name));
+  const storeOnly = storeItems.filter(i => !aptNames.has(i.name));
+  return { aptItems, storeOnly, allItems: aptItems.concat(storeOnly) };
+}
 function dashboardStats(){
   // 補充必要は店舗別の不足ロジックに統一(min=0 stock=0 の品目を誤判定しない)
   const storeIssues = new Set(ITEMS.filter(item => item.stores.some(s => getStoreShortage(item, s) > 0)).map(i => i.name));
-  const aptIssues = new Set(aptStock.filter(item => item.min > 0 && item.stock <= item.min).map(i => i.name));
   const allNames = new Set([...ITEMS.map(i => i.name), ...aptStock.map(i => i.name)]);
   const totalItemCount = allNames.size;
   const refillCount = storeIssues.size;
-  // 発注必要: アパート在庫不足 + アパートに在庫がない店舗不足品(供給URLあり)
+  // ネット発注必要: aptList + storeShortageList(supplierUrlあり)
   const { aptList, storeShortageList } = getOrderLists();
-  const orderNames = new Set([
+  const netOrderNames = new Set([
     ...aptList.map(i => i.name),
     ...storeShortageList.map(i => i.name)
   ]);
-  const aptOrderCount = orderNames.size;
+  const netOrderCount = netOrderNames.size;
+  // 店頭購入必要: supplierUrl未設定で不足している品目
+  const { allItems: shoppingItems } = getShoppingLists();
+  const shoppingNames = new Set(shoppingItems.map(i => i.name));
+  const shoppingCount = shoppingNames.size;
   let normalCount = 0;
-  allNames.forEach(name => { if(!storeIssues.has(name) && !orderNames.has(name)) normalCount++; });
-  return { refillCount, aptOrderCount, normalCount, totalItemCount };
+  allNames.forEach(name => {
+    if(!storeIssues.has(name) && !netOrderNames.has(name) && !shoppingNames.has(name)) normalCount++;
+  });
+  return { refillCount, netOrderCount, shoppingCount, normalCount, totalItemCount };
 }
 function renderDashboard(){
   const s = dashboardStats();
@@ -1152,17 +1171,22 @@ function renderDashboard(){
     <div class="kpi-card danger" onclick="showTab('refill')" style="cursor:pointer" role="button" tabindex="0">
       <div class="kpi-label">補充必要</div>
       <div class="kpi-value">${s.refillCount}</div>
-      <div class="kpi-sub">店舗側の不足</div>
+      <div class="kpi-sub">店舗の不足</div>
     </div>
-    <div class="kpi-card warning" onclick="showOrderChoice()" style="cursor:pointer" role="button" tabindex="0">
-      <div class="kpi-label">発注必要</div>
-      <div class="kpi-value">${s.aptOrderCount}</div>
-      <div class="kpi-sub">アパート在庫</div>
+    <div class="kpi-card warning" onclick="showTab('order')" style="cursor:pointer" role="button" tabindex="0">
+      <div class="kpi-label">ネット発注</div>
+      <div class="kpi-value">${s.netOrderCount}</div>
+      <div class="kpi-sub">URL登録済</div>
+    </div>
+    <div class="kpi-card shopping" onclick="showTab('shopping')" style="cursor:pointer" role="button" tabindex="0">
+      <div class="kpi-label">店頭購入</div>
+      <div class="kpi-value">${s.shoppingCount}</div>
+      <div class="kpi-sub">買い物リスト</div>
     </div>
     <div class="kpi-card good">
       <div class="kpi-label">正常</div>
       <div class="kpi-value">${s.normalCount}</div>
-      <div class="kpi-sub">合計 ${s.totalItemCount} 品目</div>
+      <div class="kpi-sub">全 ${s.totalItemCount} 品目</div>
     </div>
   `;
   document.getElementById('hero-stamp').textContent = '最終更新 ' + nowText();

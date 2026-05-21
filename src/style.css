@@ -89,18 +89,27 @@ a{color:inherit}
   padding:4px 8px;border-radius:8px;background:rgba(255,255,255,.14);font-size:10px;font-weight:700;white-space:nowrap;
 }
 .kpi-grid{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:0;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:0;
 }
 .kpi-card{
   background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.14);
-  border-radius:10px;padding:6px 8px;min-height:48px;text-align:center;
+  border-radius:10px;padding:6px 4px;min-height:54px;text-align:center;
 }
-.kpi-label{font-size:10px;opacity:.85}
+.kpi-label{font-size:10px;opacity:.85;white-space:nowrap}
 .kpi-value{font-size:22px;font-weight:800;line-height:1;margin-top:2px}
-.kpi-sub{font-size:10px;opacity:.8;margin-top:2px}
+.kpi-sub{font-size:9px;opacity:.8;margin-top:2px;white-space:nowrap}
 .kpi-card.warning .kpi-value{color:#fde68a}
 .kpi-card.danger .kpi-value{color:#fecaca}
+.kpi-card.shopping .kpi-value{color:#fbcfe8}
 .kpi-card.good .kpi-value{color:#bbf7d0}
+/* 狭い画面では 2x2 に折り返す */
+@media (max-width: 380px){
+  .kpi-grid{grid-template-columns:repeat(2,1fr);gap:5px}
+  .kpi-card{min-height:60px;padding:6px 8px}
+  .kpi-value{font-size:24px}
+  .kpi-label{font-size:11px}
+  .kpi-sub{font-size:10px}
+}
 
 
 .store-switch{
