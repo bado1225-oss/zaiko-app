@@ -452,6 +452,37 @@ a{color:inherit}
 .category-tag.cat-drink{background:#dbeafe;color:#1e3a8a;border-color:#bfdbfe}
 .category-tag.cat-shouhin{background:#fef3c7;color:#92400e;border-color:#fde68a}
 .category-tag.cat-other{background:#e2e8f0;color:#475569;border-color:#cbd5e1}
+/* ===== カテゴリ別グループ表示(冷凍庫アプリのフリーザー別表示の応用) ===== */
+.category-group{
+  margin:0 16px 14px;border-radius:12px;overflow:hidden;
+  background:var(--surface);border:1px solid var(--line);
+  box-shadow:var(--shadow);
+}
+.category-group-header{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 14px;font-weight:800;font-size:13px;
+  border-left:4px solid transparent;
+}
+.category-group-header.cat-food{background:#d1fae5;color:#065f46;border-left-color:#059669}
+.category-group-header.cat-drink{background:#dbeafe;color:#1e3a8a;border-left-color:#2563eb}
+.category-group-header.cat-shouhin{background:#fef3c7;color:#92400e;border-left-color:#ea580c}
+.category-group-header.cat-other{background:#e2e8f0;color:#475569;border-left-color:#64748b}
+.category-group-icon{font-size:18px;line-height:1}
+.category-group-name{flex:1;font-size:14px}
+.category-group-count{
+  background:rgba(255,255,255,.75);
+  border-radius:999px;padding:2px 10px;
+  font-size:11px;font-weight:800;
+}
+.category-group-items{
+  display:flex;flex-direction:column;gap:8px;
+  padding:10px;background:#fafbfc;
+}
+/* カード自体はカテゴリグループ内では余白を統一 */
+.category-group-items .item-card,
+.category-group-items .apt-card{margin:0 !important}
+.category-group-items .item-card + .item-card,
+.category-group-items .apt-card + .apt-card{margin-top:0 !important}
 .item-meta-sub{font-size:11px;color:var(--muted);font-weight:600;margin-left:6px}
 .item-meta, .apt-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 .qty-step-btn:disabled{opacity:.35;cursor:default}

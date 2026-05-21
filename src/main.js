@@ -1527,17 +1527,44 @@ function renderStore(){
     c.innerHTML = '<div class="empty"><div class="empty-icon">🔎</div>該当する商品がありません</div>';
     return;
   }
+  // 店舗フィルタを先に適用してからカテゴリ別にグループ化
+  let filtered, focusStore;
   if(storeViewFilter === 'all'){
-    const totalVisible = STORES.reduce((sum, storeName) => sum + list.filter(item => item.stores.includes(storeName) && passStoreCheckVisibility(item.name, storeName)).length, 0);
-    document.getElementById('store-count-pill').textContent = totalVisible + '件';
-    c.innerHTML = STORES.map(storeName => renderStoreSection(list, storeName)).join('');
+    filtered = list.filter(item => item.stores.some(s => passStoreCheckVisibility(item.name, s)));
+    focusStore = null;
   }else{
-    const filtered = list.filter(item => item.stores.includes(storeViewFilter) && passStoreCheckVisibility(item.name, storeViewFilter));
-    document.getElementById('store-count-pill').textContent = filtered.length + '件';
-    c.innerHTML = renderStoreSection(filtered, storeViewFilter);
+    filtered = list.filter(item => item.stores.includes(storeViewFilter) && passStoreCheckVisibility(item.name, storeViewFilter));
+    focusStore = storeViewFilter;
   }
+  document.getElementById('store-count-pill').textContent = filtered.length + '件';
+  c.innerHTML = renderItemsByCategory(filtered, item => renderStoreCard(item, focusStore));
   bindEditButtons();
   renderAllTransferQtyControls();
+}
+// 任意のアイテムリストをカテゴリ別に分類して、各カテゴリの色付きセクションとして描画する
+// renderItem: (item) => HTMLString — カードレンダラを注入
+function renderItemsByCategory(items, renderItem){
+  const order = ['食材', 'ドリンク', '消耗品'];
+  const groups = {};
+  order.forEach(c => groups[c] = []);
+  groups['その他'] = [];
+  items.forEach(item => {
+    const cat = order.includes(item.category) ? item.category : 'その他';
+    groups[cat].push(item);
+  });
+  return order.concat(['その他']).filter(cat => groups[cat].length > 0).map(cat => {
+    const catItems = groups[cat];
+    return `<div class="category-group">
+      <div class="category-group-header ${categoryTagClass(cat)}">
+        <span class="category-group-icon">${categoryIcon(cat)}</span>
+        <span class="category-group-name">${cat}</span>
+        <span class="category-group-count">${catItems.length}件</span>
+      </div>
+      <div class="category-group-items">
+        ${catItems.map(item => renderItem(item)).join('')}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // 補充判定: 店舗別の不足(getStoreShortage > 0)が1つでもあるか
@@ -1772,7 +1799,8 @@ function renderApt(){
     c.innerHTML = '<div class="empty"><div class="empty-icon">🔎</div>該当する商品がありません</div>';
     return;
   }
-  c.innerHTML = list.map(item => {
+  // 単一カードのHTMLを生成するヘルパー
+  const renderAptCard = (item) => {
     const i = aptStock.findIndex(x => x.name === item.name);
     const recommended = getAutoOrderQty(item.stock, item.min, getTarget(item), item.orderQty);
     return `<div class="apt-card ${statusClassForCard(item.stock,item.min)}" id="AC_${i}">
@@ -1800,7 +1828,8 @@ function renderApt(){
         </div>
       </div>
     </div>`;
-  }).join('');
+  };
+  c.innerHTML = renderItemsByCategory(list, renderAptCard);
   bindEditButtons();
 }
 function renderLogs(){
