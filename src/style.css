@@ -347,6 +347,25 @@ a{color:inherit}
   font-size:11px;font-weight:800;cursor:pointer;
 }
 .active-filter-clear:active{background:#cffafe}
+/* ===== 表に出る店舗切替の3ボタン ===== */
+.visible-store-switch{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;
+  padding:8px 16px 10px;
+}
+.visible-store-switch .store-switch-btn{
+  min-height:42px;padding:8px 6px;border-radius:10px;
+  background:var(--surface);border:1px solid var(--line);
+  color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;
+  box-shadow:var(--shadow);touch-action:manipulation;
+  white-space:nowrap;
+}
+.visible-store-switch .store-switch-btn.active{
+  color:#fff;border-color:transparent;
+  background:linear-gradient(135deg,var(--navy),var(--navy-2));
+}
+.visible-store-switch .store-switch-btn:active{transform:scale(.98)}
+/* パネル内のチップは横並びでフレキシブルに */
+.chip-row.in-panel{padding:0;flex-wrap:wrap;overflow:visible}
 .order-choice-modal{max-width:420px}
 .order-choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 4px}
 .order-choice-btn{

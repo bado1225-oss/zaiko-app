@@ -1161,6 +1161,23 @@ function renderDashboard(){
   `;
   document.getElementById('hero-stamp').textContent = '最終更新 ' + nowText();
 }
+function populateSearchSelect(scope){
+  const el = document.getElementById('search-' + scope + '-select');
+  if(!el) return;
+  const prev = el.value;
+  const source = scope === 'store' ? ITEMS : aptStock;
+  const names = [...new Set(source.map(i => i.name))].sort((a,b) => a.localeCompare(b, 'ja'));
+  el.innerHTML = '<option value="">商品名: すべて</option>' +
+    names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  // 復元(値が今もリストにあれば)
+  if(names.includes(prev)) el.value = prev;
+}
+function onSearchSelect(scope){
+  const el = document.getElementById('search-' + scope + '-select');
+  searchState[scope].text = el?.value || '';
+  if(scope === 'store') renderStore(); else renderApt();
+  updateActiveFilterBanner(scope);
+}
 function onSearchInput(scope){
   const el = document.getElementById('search-' + scope + '-text');
   if(!el) return;
@@ -1198,6 +1215,8 @@ function clearAllFilters(scope){
   searchState[scope] = { text:'', category:'all', status:'all' };
   const txtEl = document.getElementById('search-' + scope + '-text');
   if(txtEl) txtEl.value = '';
+  const selEl = document.getElementById('search-' + scope + '-select');
+  if(selEl) selEl.value = '';
   const clearBtn = document.getElementById('search-' + scope + '-clear');
   if(clearBtn) clearBtn.style.display = 'none';
   document.querySelectorAll('#category-chips-' + scope + ' .chip').forEach(c => c.classList.toggle('active', c.dataset.cat === 'all'));
@@ -1352,6 +1371,7 @@ function passStoreCheckVisibility(itemName, storeName){
   return !checked; // 'unchecked'
 }
 function filteredStoreItems(){
+  populateSearchSelect('store');
   const s = searchState.store;
   const qNorm = normalizeJa(s.text.trim());
   const sortValue = document.getElementById('sort-store')?.value || '不足順';
@@ -1775,6 +1795,7 @@ function updateAptCardUI(index){
   card.className = `apt-card ${statusClassForCard(item.stock, item.min)}`;
 }
 function renderApt(){
+  populateSearchSelect('apt');
   const s = searchState.apt;
   const qNorm = normalizeJa(s.text.trim());
   const sortValue = document.getElementById('sort-apt')?.value || '不足順';
