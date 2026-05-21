@@ -927,12 +927,18 @@ function updateStoreCardUI(name){
   const badgeEl = document.getElementById('BAD_' + eid(name,''));
   const usageEl = document.getElementById('USAGE_' + eid(name,''));
   const transferEl = document.getElementById('TR_' + eid(name,''));
-  if(totalEl){ totalEl.textContent = total; totalEl.className = `total-strong ${statusClassForTotal(total,item.min)}`; }
-  if(usageEl) usageEl.textContent = usage;
-  if(badgeEl){
-    badgeEl.textContent = getStatusText(total,item.min);
-    badgeEl.className = statusBadgeClass(total,item.min);
+  // 単一店舗フィルタ中はその店舗の値を表示、すべて表示時は合計
+  const focusStore = (storeViewFilter !== 'all') ? storeViewFilter : null;
+  if(focusStore && item.stores.includes(focusStore)){
+    const v = storeStock[name]?.[focusStore] ?? 0;
+    const cls = storeQtyStatusClass(v, item, focusStore);
+    if(totalEl){ totalEl.textContent = v; totalEl.className = `total-strong ${cls.replace('qty-','total-')}`; }
+    if(badgeEl){ badgeEl.textContent = badgeTextFromQtyClass(cls); badgeEl.className = badgeClassFromQtyClass(cls); }
+  }else{
+    if(totalEl){ totalEl.textContent = total; totalEl.className = `total-strong ${statusClassForTotal(total,item.min)}`; }
+    if(badgeEl){ badgeEl.textContent = getStatusText(total,item.min); badgeEl.className = statusBadgeClass(total,item.min); }
   }
+  if(usageEl) usageEl.textContent = usage;
   STORES.forEach(storeName => {
     const qtyEl = document.getElementById(eid(name, storeName));
     if(qtyEl && item){
@@ -1446,6 +1452,18 @@ function getStoreStatusText(v, item, store){
   if(v <= min) return '🟡 要注意';
   return '🟢 正常';
 }
+function badgeClassFromQtyClass(qtyClass){
+  if(qtyClass === 'qty-danger') return 'badge badge-danger';
+  if(qtyClass === 'qty-warning') return 'badge badge-warning';
+  if(qtyClass === 'qty-excess') return 'badge badge-info';
+  return 'badge badge-success';
+}
+function badgeTextFromQtyClass(qtyClass){
+  if(qtyClass === 'qty-danger') return '🔴 要補充';
+  if(qtyClass === 'qty-warning') return '🟡 要注意';
+  if(qtyClass === 'qty-excess') return '🔵 過剰';
+  return '🟢 正常';
+}
 function renderStoreCard(item, focusStoreName=null){
   const total = getTotal(item);
   const usage = getUsageScore(item.name);
@@ -1512,10 +1530,21 @@ function renderStoreCard(item, focusStoreName=null){
       </div>
     </div>
 
-    <div class="status-row">
-      <span class="${statusBadgeClass(total,item.min)}" id="BAD_${eid(item.name,'')}">${getStatusText(total,item.min)}</span>
-      <span class="total-label">合計 <span class="total-strong ${statusClassForTotal(total,item.min)}" id="TOT_${eid(item.name,'')}">${total}</span> ${item.unit}</span>
-    </div>
+    ${(() => {
+      // 単一店舗表示時はその店舗の在庫数を、すべて表示時は合計を上部に表示する
+      if(focusStoreName){
+        const v = storeStock[item.name]?.[focusStoreName] ?? 0;
+        const cls = storeQtyStatusClass(v, item, focusStoreName);
+        return `<div class="status-row">
+          <span class="${badgeClassFromQtyClass(cls)}" id="BAD_${eid(item.name,'')}">${badgeTextFromQtyClass(cls)}</span>
+          <span class="total-label">${focusStoreName} <span class="total-strong ${cls.replace('qty-','total-')}" id="TOT_${eid(item.name,'')}">${v}</span> ${item.unit}</span>
+        </div>`;
+      }
+      return `<div class="status-row">
+        <span class="${statusBadgeClass(total,item.min)}" id="BAD_${eid(item.name,'')}">${getStatusText(total,item.min)}</span>
+        <span class="total-label">合計 <span class="total-strong ${statusClassForTotal(total,item.min)}" id="TOT_${eid(item.name,'')}">${total}</span> ${item.unit}</span>
+      </div>`;
+    })()}
 
     <div class="store-cells-row">${compactSummary}</div>
 

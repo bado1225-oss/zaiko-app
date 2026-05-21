@@ -272,6 +272,7 @@ a{color:inherit}
 .total-danger{color:var(--red)!important;font-weight:900}
 .total-warning{color:var(--orange)!important;font-weight:900}
 .total-ok{color:var(--green)!important}
+.total-excess{color:var(--primary)!important;font-weight:900}
 .qty-val.qty-danger{color:var(--red);font-weight:900}
 .qty-val.qty-warning{color:var(--orange)}
 .qty-val.qty-ok{color:var(--green)}
