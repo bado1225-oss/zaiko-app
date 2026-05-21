@@ -1129,14 +1129,15 @@ function ensureActionUser(){
   return localStorage.getItem('inv_user') || askUserName();
 }
 // 店頭購入が必要な商品(supplierUrl 未設定で不足している品目)
+// renderShopping と同一ロジックで判定し、ダッシュボードカウントと表示件数が必ず一致するようにする
 function getShoppingLists(){
   const storeItems = ITEMS.filter(item => {
     const key = item.name + '|店舗';
-    return itemNeedsRefill(item) && !item.supplierUrl && !shoppingPurchased[key];
+    return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
   });
   const aptItems = aptStock.filter(item => {
     const key = item.name + '|アパート';
-    return item.min > 0 && item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
+    return item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
   });
   const aptNames = new Set(aptItems.map(i => i.name));
   const storeOnly = storeItems.filter(i => !aptNames.has(i.name));
