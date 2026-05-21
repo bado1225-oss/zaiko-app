@@ -366,6 +366,8 @@ a{color:inherit}
 .visible-store-switch .store-switch-btn:active{transform:scale(.98)}
 /* パネル内のチップは横並びでフレキシブルに */
 .chip-row.in-panel{padding:0;flex-wrap:wrap;overflow:visible}
+/* 表に出る「表示する商品」セレクト */
+.visible-visibility-row{padding:0 16px 8px}
 .order-choice-modal{max-width:420px}
 .order-choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 4px}
 .order-choice-btn{
