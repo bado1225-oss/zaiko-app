@@ -424,9 +424,24 @@ a{color:inherit}
 .apt-stock-meta{flex:1;min-width:0}
 .apt-stock-label{font-size:11px;color:var(--muted);font-weight:600;line-height:1.4}
 .apt-stock-label strong{color:var(--text);font-weight:800}
-.store-row,.apt-stock-row{
+.apt-stock-row{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
 }
+/* 店舗行: 2段構成(上=店舗名+在庫数、下=チェック+操作) */
+.store-row{
+  display:flex;flex-direction:column;gap:8px;
+  padding:8px 0;border-bottom:1px dashed var(--line);
+}
+.store-row:last-child{border-bottom:none;padding-bottom:0}
+.store-row.na-row{flex-direction:row;align-items:center;justify-content:space-between}
+.store-row-top{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.store-qty-wrap{display:flex;align-items:baseline;gap:3px;flex-shrink:0}
+.store-row-bottom{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.store-row-bottom .qty-step-group{margin-left:auto}
 .store-left{min-width:92px}
 .store-name-label{font-size:13px;font-weight:800}
 .store-name-label.kagurazaka{color:var(--navy)}
@@ -839,7 +854,7 @@ textarea.form-input{resize:vertical;min-height:96px}
 
 /* ── Store checklist button ───────────────────────────── */
 .check-btn-store{
-  width:28px;height:28px;border-radius:8px;border:2px solid var(--line);
+  width:32px;height:32px;border-radius:8px;border:2px solid var(--line);
   background:#fff;cursor:pointer;position:relative;flex-shrink:0;
 }
 .check-btn-store.checked{

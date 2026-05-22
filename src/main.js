@@ -1499,7 +1499,7 @@ function renderStoreCard(item, focusStoreName=null){
     const inItem = item.stores.includes(store);
     const cls = store === '神楽坂' ? 'kagurazaka' : 'otoko';
     if(!inItem){
-      return `<div class="store-row"><div class="store-left"><div class="store-name-label ${cls}">${store}</div></div><span class="na-label">対象外</span></div>`;
+      return `<div class="store-row na-row"><div class="store-name-label ${cls}">${store}</div><span class="na-label">対象外</span></div>`;
     }
     const v = storeStock[item.name]?.[store] ?? 0;
     const checked = isStoreChecked(item.name, store);
@@ -1512,12 +1512,16 @@ function renderStoreCard(item, focusStoreName=null){
       ? `<span class="store-excess-badge">過剰</span>` : '';
     // しきい値の詳細は編集モーダルで確認できるため、行内の表示は省略
     return `<div class="store-row">
-      <div class="store-left"><div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item, store)}"></span>${store}${excessBadge}</div></div>
-      <div class="store-row-right">
-        <span class="qty-val tappable ${storeQtyStatusClass(v, item, store)}" id="${eid(item.name, store)}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'store',name:'${encodeURIComponent(item.name)}',store:'${encodeURIComponent(store)}'})">${v}</span>
-        <span class="qty-unit">${item.unit}</span>
-        ${checkedMeta}
+      <div class="store-row-top">
+        <div class="store-name-label ${cls}"><span class="store-status-dot ${storeQtyStatusClass(v, item, store)}"></span>${store}${excessBadge}</div>
+        <div class="store-qty-wrap">
+          <span class="qty-val tappable ${storeQtyStatusClass(v, item, store)}" id="${eid(item.name, store)}" role="button" tabindex="0" title="タップで直接入力" onclick="openQtyModal({mode:'store',name:'${encodeURIComponent(item.name)}',store:'${encodeURIComponent(store)}'})">${v}</span>
+          <span class="qty-unit">${item.unit}</span>
+        </div>
+      </div>
+      <div class="store-row-bottom">
         <button class="check-btn-store ${checked ? 'checked' : ''}" aria-label="${store} ${item.name} の確認状態" title="${checked ? '確認済み' : '未確認'}" onclick="toggleStoreChecked('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}')"></button>
+        ${checkedMeta}
         <span class="qty-step-group">
           <button class="qty-step-btn minus" ${v <= 0 ? 'disabled' : ''} aria-label="${store} の ${item.name} を -1" onclick="quickIncStore('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}',-1)">−</button>
           <button class="qty-step-btn plus" aria-label="${store} の ${item.name} を +1" onclick="quickIncStore('${encodeURIComponent(item.name)}','${encodeURIComponent(store)}',1)">＋</button>
