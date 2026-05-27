@@ -673,8 +673,12 @@ function getTransferKey(name, store){
   return `${name}__${store}`;
 }
 function getStoreShortage(item, storeName){
+  // この店舗で扱っていない品目はゼロ(対象外)
+  if(!item.stores.includes(storeName)) return 0;
   const current = storeStock[item.name]?.[storeName] ?? 0;
   const storeMin = getStoreMin(item, storeName);
+  // 在庫がゼロのときは最低在庫が未設定(=0)でも 1 以上を不足扱いとし、補充アラームを出す
+  if(current <= 0) return Math.max(1, storeMin);
   return Math.max(0, storeMin - current);
 }
 // 補充入力の上限(店舗別 max が設定されていれば max-current で頭打ち)
@@ -1751,7 +1755,11 @@ function makeOrderCard({scope,name,unit,min,target,supplier,supplierUrl,orderQty
 //   1. アパート在庫が最低以下 + supplierUrl ある apt 品目
 //   2. 店舗で不足 + アパートに在庫なし(or 未登録) + supplierUrl ある store 品目
 function getOrderLists(){
-  const aptList = aptStock.filter(item => item.min > 0 && item.stock <= item.min && item.supplierUrl);
+  // アパート在庫: ゼロは無条件で発注対象、それ以外は min < stock のみ
+  const aptList = aptStock.filter(item => {
+    if(!item.supplierUrl) return false;
+    return item.stock <= 0 || (item.min > 0 && item.stock < item.min);
+  });
   const aptNames = new Set(aptList.map(a => a.name));
   const storeShortageList = ITEMS.filter(item => {
     if(!item.supplierUrl) return false;
