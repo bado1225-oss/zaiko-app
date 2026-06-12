@@ -502,16 +502,28 @@ async function reloadAllFromSupabase(){
     }
   });
 
-  // 孤立した apartment_inventory 行(items マスタ非アクティブ等で参照不能なもの)を
-  // クラウドから自動削除して、UIに「不明商品」が出ないようにする
-  const _orphanedAptIds = [];
+  // items マスタが見つからない apartment_inventory 行も、ユーザーが見えるように残す
+  // (以前は自動削除していたが、データを失うリスクがあるため見える化に変更)
   aptStock = (aptRes.data || []).map(r => {
     const item = ITEMS.find(i => i.id === r.item_id || itemIdByName[i?.name] === r.item_id || i.name === itemNameById[r.item_id]);
     const fallback = ITEMS.find(i => i.name === itemNameById[r.item_id]);
     const ref = item || fallback;
     if(!ref){
-      _orphanedAptIds.push(r.id);  // 後でクラウドからも削除
-      return null;
+      // items マスタが見つからなくても、apt 在庫データ自体に name 等が含まれていればそれを使う
+      console.warn('[orphan apt]', r.id, r.item_id, r.name);
+      return normalizeAptItem({
+        id: r.id,
+        itemId: r.item_id,
+        name: r.name || `不明商品(item_id:${r.item_id})`,
+        category: r.category || '消耗品',
+        unit: r.unit || '個',
+        stock: r.quantity,
+        min: r.min_stock ?? 0,
+        target: r.target_stock ?? 1,
+        supplier: r.supplier || '—',
+        supplierUrl: r.supplier_url || '',
+        orderQty: r.fixed_order_qty ?? null
+      });
     }
     return normalizeAptItem({
       id: r.id,
@@ -526,13 +538,7 @@ async function reloadAllFromSupabase(){
       supplierUrl: ref.supplierUrl || '',
       orderQty: ref.orderQty ?? null
     });
-  }).filter(Boolean);
-  // 孤立行を非同期でクリーンアップ(失敗してもアプリは動作)
-  if(_orphanedAptIds.length){
-    supabaseClient.from('apartment_inventory').delete().in('id', _orphanedAptIds)
-      .then(({error}) => { if(error) console.warn('orphan apt cleanup:', error); })
-      .catch(e => console.warn('orphan apt cleanup:', e));
-  }
+  });
 
   orderChecks = {};
   (orderRes.data || []).forEach(r => {
