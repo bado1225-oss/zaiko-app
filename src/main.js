@@ -1330,10 +1330,14 @@ function askUserName(){
 function ensureActionUser(){
   return localStorage.getItem('inv_user') || askUserName();
 }
+// 削除済(非アクティブ)を除外したアクティブ ITEMS を返す
+function activeItems(){
+  return ITEMS.filter(i => i.isActive !== false);
+}
 // 店頭購入が必要な商品(supplierUrl 未設定で不足している品目)
 // renderShopping と同一ロジックで判定し、ダッシュボードカウントと表示件数が必ず一致するようにする
 function getShoppingLists(){
-  const storeItems = ITEMS.filter(item => {
+  const storeItems = activeItems().filter(item => {
     const key = item.name + '|店舗';
     return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
   });
@@ -1347,7 +1351,7 @@ function getShoppingLists(){
 }
 function dashboardStats(){
   // 補充必要は店舗別の不足ロジックに統一(min=0 stock=0 の品目を誤判定しない)
-  const storeIssues = new Set(ITEMS.filter(item => item.stores.some(s => getStoreShortage(item, s) > 0)).map(i => i.name));
+  const storeIssues = new Set(activeItems().filter(item => item.stores.some(s => getStoreShortage(item, s) > 0)).map(i => i.name));
   const allNames = new Set([...ITEMS.map(i => i.name), ...aptStock.map(i => i.name)]);
   const totalItemCount = allNames.size;
   const refillCount = storeIssues.size;
@@ -1917,7 +1921,7 @@ function itemNeedsRefill(item){
 }
 function renderRefill(){
   const c = document.getElementById('refill-items');
-  const list = ITEMS.filter(itemNeedsRefill);
+  const list = activeItems().filter(itemNeedsRefill);
   document.getElementById('refill-count-pill').textContent = list.length + '件';
   if(!list.length){
     c.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>補充が必要な商品はありません</div>';
@@ -2023,7 +2027,7 @@ function getOrderLists(){
     return item.stock <= 0 || (item.min > 0 && item.stock < item.min);
   });
   const aptNames = new Set(aptList.map(a => a.name));
-  const storeShortageList = ITEMS.filter(item => {
+  const storeShortageList = activeItems().filter(item => {
     if(!item.supplierUrl) return false;
     if(aptNames.has(item.name)) return false;  // アパート側で既に発注対象
     const totalShortage = item.stores.reduce((sum, s) => sum + getStoreShortage(item, s), 0);
@@ -3454,7 +3458,7 @@ async function executeTransferConfirm(){
 }
 
 function renderShopping(){
-  var storeItems = ITEMS
+  var storeItems = activeItems()
     .filter(function(item){
       var key = item.name + '|店舗';
       return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
