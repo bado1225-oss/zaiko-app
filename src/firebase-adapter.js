@@ -85,7 +85,12 @@
       try{
         let ref = _db.collection(state.table);
         for(const f of state.filters){
-          ref = ref.where(f.col, f.op, f.val);
+          // 'id' 列は Firestore のドキュメントIDとして扱う(Supabase の主キーセマンティクスに合わせる)
+          if(f.col === 'id'){
+            ref = ref.where(firebase.firestore.FieldPath.documentId(), f.op, f.val);
+          }else{
+            ref = ref.where(f.col, f.op, f.val);
+          }
         }
         // where と orderBy の併用は複合インデックスを要するため、client-side でソートする
         const hasFilter = state.filters.length > 0;
@@ -189,7 +194,12 @@
       try{
         let ref = _db.collection(state.table);
         for(const f of state.filters){
-          ref = ref.where(f.col, f.op, f.val);
+          // 'id' 列は Firestore のドキュメントIDとして扱う(Supabase の主キーセマンティクスに合わせる)
+          if(f.col === 'id'){
+            ref = ref.where(firebase.firestore.FieldPath.documentId(), f.op, f.val);
+          }else{
+            ref = ref.where(f.col, f.op, f.val);
+          }
         }
         const snap = await ref.get();
         await Promise.all(snap.docs.map(d => d.ref.update(sanitize(updates))));
@@ -211,7 +221,12 @@
       try{
         let ref = _db.collection(state.table);
         for(const f of state.filters){
-          ref = ref.where(f.col, f.op, f.val);
+          // 'id' 列は Firestore のドキュメントIDとして扱う(Supabase の主キーセマンティクスに合わせる)
+          if(f.col === 'id'){
+            ref = ref.where(firebase.firestore.FieldPath.documentId(), f.op, f.val);
+          }else{
+            ref = ref.where(f.col, f.op, f.val);
+          }
         }
         const snap = await ref.get();
         await Promise.all(snap.docs.map(d => d.ref.delete()));

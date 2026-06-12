@@ -1334,15 +1334,21 @@ function ensureActionUser(){
 function activeItems(){
   return ITEMS.filter(i => i.isActive !== false);
 }
+// 同名の items ドキュメントが複数あり、いずれかに supplierUrl があれば「ネット発注対象」とみなす
+function productHasUrl(name){
+  return ITEMS.some(i => i.name === name && i.supplierUrl);
+}
 // 店頭購入が必要な商品(supplierUrl 未設定で不足している品目)
 // renderShopping と同一ロジックで判定し、ダッシュボードカウントと表示件数が必ず一致するようにする
 function getShoppingLists(){
   const storeItems = activeItems().filter(item => {
     const key = item.name + '|店舗';
+    if(productHasUrl(item.name)) return false;
     return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
   });
   const aptItems = aptStock.filter(item => {
     const key = item.name + '|アパート';
+    if(productHasUrl(item.name)) return false;
     return item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
   });
   const aptNames = new Set(aptItems.map(i => i.name));
@@ -3461,6 +3467,7 @@ function renderShopping(){
   var storeItems = activeItems()
     .filter(function(item){
       var key = item.name + '|店舗';
+      if(productHasUrl(item.name)) return false;
       return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
     })
     .map(function(item){
@@ -3475,6 +3482,7 @@ function renderShopping(){
   var aptItems = aptStock
     .filter(function(item){
       var key = item.name + '|アパート';
+      if(productHasUrl(item.name)) return false;
       return item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
     })
     .map(function(item){
