@@ -239,6 +239,130 @@ function closeCloudModalOutside(e){ /* modal removed */ }
 function isCloudReady(){
   return cloudEnabled && !!supabaseClient && !!currentAuthUser;
 }
+// ===== Supabase → Firebase データ移行 =====
+async function migrateFromSupabase(){
+  const url = document.getElementById('migrate-url').value.trim();
+  const anonKey = document.getElementById('migrate-anon-key').value.trim();
+  const email = document.getElementById('migrate-email').value.trim();
+  const password = document.getElementById('migrate-password').value.trim();
+  const progressEl = document.getElementById('migrate-progress');
+  const setProgress = (msg) => { if(progressEl) progressEl.textContent = msg; };
+  if(!url || !anonKey){ alert('Supabase URL / Anon Key を入力してください'); return; }
+  if(!currentAuthUser || !supabaseClient || !supabaseClient._firebase){
+    alert('先に Firebase にログインしてください'); return;
+  }
+  if(!confirm('Supabase からデータを取得して Firebase に上書きインポートします。よろしいですか?')) return;
+  try{
+    setProgress('① Supabase に接続中…');
+    const supaClient = window.supabase.createClient(url, anonKey);
+    if(email && password){
+      const { error } = await supaClient.auth.signInWithPassword({ email, password });
+      if(error) throw new Error('Supabase ログイン失敗: ' + error.message);
+    }
+    setProgress('② Supabase からデータを取得中…');
+    const [items, targets, storeInv, aptInv, orderC, logs] = await Promise.all([
+      supaClient.from('items').select('*'),
+      supaClient.from('item_store_targets').select('*'),
+      supaClient.from('store_inventory').select('*'),
+      supaClient.from('apartment_inventory').select('*'),
+      supaClient.from('order_checks').select('*'),
+      supaClient.from('inventory_logs').select('*').order('created_at', {ascending:false}).limit(500)
+    ]);
+    if(items.error) throw items.error;
+    const fbDb = supabaseClient._firebase.db;
+    const counts = { items:0, targets:0, store:0, apt:0, orderChecks:0, logs:0 };
+
+    setProgress(`③ items を書込中… (${items.data.length}件)`);
+    for(const row of items.data){
+      await fbDb.collection('items').doc(String(row.id)).set(row, { merge: true });
+      counts.items++;
+    }
+    setProgress(`④ item_store_targets を書込中… (${targets.data?.length||0}件)`);
+    for(const row of (targets.data||[])){
+      const docId = `${row.item_id}_${row.store_code}`;
+      await fbDb.collection('item_store_targets').doc(docId).set(row, { merge: true });
+      counts.targets++;
+    }
+    setProgress(`⑤ store_inventory を書込中… (${storeInv.data?.length||0}件)`);
+    for(const row of (storeInv.data||[])){
+      const docId = `${row.item_id}_${row.store_code}`;
+      await fbDb.collection('store_inventory').doc(docId).set(row, { merge: true });
+      counts.store++;
+    }
+    setProgress(`⑥ apartment_inventory を書込中… (${aptInv.data?.length||0}件)`);
+    for(const row of (aptInv.data||[])){
+      await fbDb.collection('apartment_inventory').doc(String(row.item_id)).set(row, { merge: true });
+      counts.apt++;
+    }
+    setProgress(`⑦ order_checks を書込中… (${orderC.data?.length||0}件)`);
+    for(const row of (orderC.data||[])){
+      const docId = `${row.item_id}_${row.scope}`;
+      await fbDb.collection('order_checks').doc(docId).set(row, { merge: true });
+      counts.orderChecks++;
+    }
+    setProgress(`⑧ inventory_logs を書込中… (${logs.data?.length||0}件)`);
+    for(const row of (logs.data||[])){
+      await fbDb.collection('inventory_logs').doc(String(row.id || `log_${Date.now()}_${Math.random()}`)).set(row, { merge: true });
+      counts.logs++;
+    }
+    setProgress(`✅ 完了: items=${counts.items} targets=${counts.targets} store=${counts.store} apt=${counts.apt} orderChecks=${counts.orderChecks} logs=${counts.logs}`);
+    // データを再読込
+    await reloadAllFromSupabase();
+    toast('✅ データ移行完了');
+  }catch(err){
+    console.error(err);
+    setProgress('❌ エラー: ' + (err.message || err));
+    alert('移行に失敗しました: ' + (err.message || err));
+  }
+}
+// ===== Firebase 接続(優先) =====
+async function connectFirebase(){
+  const email = document.getElementById('cloud-email').value.trim();
+  const password = document.getElementById('cloud-password').value.trim();
+  if(!email || !password){ alert('メールアドレスとパスワードを入力してください'); return; }
+  try{
+    if(typeof createFirebaseClient !== 'function'){
+      alert('Firebase SDK が読み込まれていません。ページを再読込してください。');
+      return;
+    }
+    supabaseClient = createFirebaseClient();
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if(error) throw error;
+    currentAuthUser = data.user;
+    cloudEnabled = true;
+    // ログイン情報を保存(自動再接続用)
+    try{ localStorage.setItem('inv_firebase_cfg_v1', JSON.stringify({ email, password })); }catch(e){}
+    await upsertMyProfile();
+    await reloadAllFromSupabase();
+    updateSyncStatus('🔥 Firebase 接続中: ' + email, true);
+    toast('☁ Firebase に接続しました');
+  }catch(err){
+    console.error(err);
+    updateSyncStatus('接続失敗');
+    alert('Firebase 接続に失敗しました: ' + (err.message || err));
+  }
+}
+async function tryAutoConnectFirebase(){
+  if(typeof createFirebaseClient !== 'function') return false;
+  let cfg = null;
+  try{ const raw = localStorage.getItem('inv_firebase_cfg_v1'); if(raw) cfg = JSON.parse(raw); }catch(e){}
+  if(!cfg || !cfg.email || !cfg.password) return false;
+  try{
+    supabaseClient = createFirebaseClient();
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email: cfg.email, password: cfg.password });
+    if(error) throw error;
+    currentAuthUser = data.user;
+    cloudEnabled = true;
+    await upsertMyProfile();
+    await reloadAllFromSupabase();
+    updateSyncStatus('🔥 Firebase 接続中: ' + cfg.email, true);
+    return true;
+  }catch(err){
+    console.error('[firebase auto-connect]', err);
+    updateSyncStatus('Firebase 接続失敗');
+    return false;
+  }
+}
 async function connectSupabase(){
   const url = document.getElementById('cloud-url').value.trim();
   const anonKey = document.getElementById('cloud-anon-key').value.trim();
@@ -3276,7 +3400,9 @@ async function bootApp(){
   renderDashboard();
   renderUndoBar();
   renderStore();
-  await tryAutoConnectSupabase();
+  // 優先: Firebase 自動接続。失敗した場合のみ Supabase へフォールバック
+  const ok = await tryAutoConnectFirebase();
+  if(!ok) await tryAutoConnectSupabase();
 }
 bootApp();
 let pendingTransferEncodedName = null;

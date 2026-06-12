@@ -11,13 +11,17 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260521i">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260521i">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260521i">
-<link rel="manifest" href="manifest.webmanifest?v=20260521i">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260521j">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260521j">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260521j">
+<link rel="manifest" href="manifest.webmanifest?v=20260521j">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260521i">
+<link rel="stylesheet" href="src/style.css?v=20260521j">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="src/firebase-adapter.js?v=20260521j"></script>
 </head>
 <body>
 <div class="app">
@@ -36,7 +40,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="トップへ">
-    <img src="icons/icon-512.png?v=20260521i" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260521j" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -235,21 +239,13 @@
         <button class="modal-copy" onclick="addCategoryFlow()">＋ 新しいカテゴリを追加</button>
       </div>
       <div style="height:1px;background:var(--line);margin:0 16px"></div>
-      <div style="padding:16px 16px 32px">
-        <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">☁ クラウド同期（Supabase）</div>
+      <div style="padding:16px 16px 16px">
+        <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">🔥 クラウド同期(Firebase)</div>
         <div style="color:#666;font-size:0.88em;margin-bottom:14px">
-          Supabase URL・Anon Key・ログイン情報を設定すると、複数人で同じ在庫をリアルタイム共有できます。
+          メールアドレスとパスワードでログインすると、複数の端末で同じ在庫をリアルタイム共有できます。
         </div>
         <div class="sync-panel-status" id="sync-status" style="margin-bottom:14px">未接続</div>
 
-        <div class="form-row">
-          <div class="form-label">Supabase URL</div>
-          <input class="form-input" id="cloud-url" type="text" placeholder="https://xxxxx.supabase.co">
-        </div>
-        <div class="form-row">
-          <div class="form-label">Supabase Anon Key</div>
-          <textarea class="form-input" id="cloud-anon-key" rows="4" placeholder="eyJhbGciOi..."></textarea>
-        </div>
         <div class="form-row">
           <div class="form-label">ログインメール</div>
           <input class="form-input" id="cloud-email" type="email" placeholder="example@example.com">
@@ -257,10 +253,38 @@
         <div class="form-row">
           <div class="form-label">パスワード</div>
           <input class="form-input" id="cloud-password" type="password" placeholder="password">
-          <div class="form-help">入力した接続情報はこの端末に保存し、次回も自動でクラウド再接続します。</div>
+          <div class="form-help">入力した認証情報はこの端末に保存し、次回も自動再接続します。</div>
         </div>
         <div style="margin-top:16px">
-          <button class="modal-submit" onclick="connectSupabase()">接続する</button>
+          <button class="modal-submit" onclick="connectFirebase()">🔥 Firebase に接続する</button>
+        </div>
+      </div>
+      <div style="height:1px;background:var(--line);margin:0 16px"></div>
+      <div style="padding:16px 16px 32px">
+        <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">📦 Supabase からデータ移行</div>
+        <div style="color:#666;font-size:0.88em;margin-bottom:14px">
+          以前 Supabase に保存していたデータを Firebase に取り込みます。<br>
+          ※ Firebase へのログイン後に実行してください。Supabase URL/Key の入力が必要です。
+        </div>
+        <div class="form-row">
+          <div class="form-label">Supabase URL</div>
+          <input class="form-input" id="migrate-url" type="text" placeholder="https://xxxxx.supabase.co">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Supabase Anon Key</div>
+          <textarea class="form-input" id="migrate-anon-key" rows="3" placeholder="eyJhbGciOi..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Supabase ログインメール</div>
+          <input class="form-input" id="migrate-email" type="email" placeholder="example@example.com">
+        </div>
+        <div class="form-row">
+          <div class="form-label">Supabase パスワード</div>
+          <input class="form-input" id="migrate-password" type="password" placeholder="password">
+        </div>
+        <div id="migrate-progress" style="font-size:13px;color:#475569;margin:10px 0"></div>
+        <div style="margin-top:8px">
+          <button class="modal-copy" onclick="migrateFromSupabase()">📦 Supabase からインポート開始</button>
         </div>
       </div>
     </div>
@@ -472,6 +496,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260521i"></script>
+<script src="src/main.js?v=20260521j"></script>
 </body>
 </html>
