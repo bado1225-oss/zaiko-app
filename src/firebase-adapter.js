@@ -57,56 +57,63 @@
     return q;
   }
 
+  // 共通の Promise 化ヘルパー(完全な Promise 互換チェーンを返す)
+  function _runAsync(asyncFn){
+    return new Promise((resolve) => {
+      asyncFn().then(resolve).catch(err => resolve({ data: null, error: err }));
+    });
+  }
+  function _attachPromise(thenable, asyncFn){
+    let cachedPromise = null;
+    const getP = () => (cachedPromise || (cachedPromise = _runAsync(asyncFn)));
+    thenable.then    = (onFul, onRej) => getP().then(onFul, onRej);
+    thenable.catch   = (onRej)        => getP().catch(onRej);
+    thenable.finally = (onFin)        => getP().finally(onFin);
+    return thenable;
+  }
+
   // === SELECT 実行 ===
   function execGet(state, single){
     const thenable = {
-      then(resolve, reject){
-        (async () => {
-          try{
-            let ref = _db.collection(state.table);
-            for(const f of state.filters){
-              ref = ref.where(f.col, f.op, f.val);
-            }
-            // where と orderBy の併用は複合インデックスを要するため、client-side でソートする
-            const hasFilter = state.filters.length > 0;
-            const serverOrderBy = !hasFilter && state.orderBy;
-            if(serverOrderBy) ref = ref.orderBy(serverOrderBy.col, serverOrderBy.asc ? 'asc' : 'desc');
-            // limit も serverside で適用するのは「where+orderBy なし」の時のみ。
-            // それ以外は全件取得後にソート → limit。
-            const serverLimit = !hasFilter || !state.orderBy;
-            if(serverLimit && state.limitN) ref = ref.limit(state.limitN);
-            const snap = await ref.get();
-            let data = snap.docs.map(d => normalizeDoc(d));
-            // client-side sort
-            if(hasFilter && state.orderBy){
-              const col = state.orderBy.col;
-              const dir = state.orderBy.asc ? 1 : -1;
-              data.sort((a, b) => {
-                const av = a[col], bv = b[col];
-                if(av == null && bv == null) return 0;
-                if(av == null) return 1;
-                if(bv == null) return -1;
-                if(typeof av === 'string') return av.localeCompare(bv, 'ja') * dir;
-                return ((av > bv) - (av < bv)) * dir;
-              });
-              if(state.limitN) data = data.slice(0, state.limitN);
-            }
-            resolve({ data: single ? (data[0] || null) : data, error: null });
-          }catch(err){
-            console.error('[firestore-get]', state.table, err);
-            resolve({ data: null, error: err });
-            if(reject) reject(err);
-          }
-        })();
-      },
-      // chained API after select
       eq(col, val){ state.filters.push({col, op:'==', val}); return thenable; },
       in(col, values){ state.filters.push({col, op:'in', val:values}); return thenable; },
       order(col, opts){ state.orderBy = { col, asc: !opts || opts.ascending !== false }; return thenable; },
       limit(n){ state.limitN = n; return thenable; },
       single(){ return execGet(state, true); }
     };
-    return thenable;
+    return _attachPromise(thenable, async () => {
+      try{
+        let ref = _db.collection(state.table);
+        for(const f of state.filters){
+          ref = ref.where(f.col, f.op, f.val);
+        }
+        // where と orderBy の併用は複合インデックスを要するため、client-side でソートする
+        const hasFilter = state.filters.length > 0;
+        const serverOrderBy = !hasFilter && state.orderBy;
+        if(serverOrderBy) ref = ref.orderBy(serverOrderBy.col, serverOrderBy.asc ? 'asc' : 'desc');
+        const serverLimit = !hasFilter || !state.orderBy;
+        if(serverLimit && state.limitN) ref = ref.limit(state.limitN);
+        const snap = await ref.get();
+        let data = snap.docs.map(d => normalizeDoc(d));
+        if(hasFilter && state.orderBy){
+          const col = state.orderBy.col;
+          const dir = state.orderBy.asc ? 1 : -1;
+          data.sort((a, b) => {
+            const av = a[col], bv = b[col];
+            if(av == null && bv == null) return 0;
+            if(av == null) return 1;
+            if(bv == null) return -1;
+            if(typeof av === 'string') return av.localeCompare(bv, 'ja') * dir;
+            return ((av > bv) - (av < bv)) * dir;
+          });
+          if(state.limitN) data = data.slice(0, state.limitN);
+        }
+        return { data: single ? (data[0] || null) : data, error: null };
+      }catch(err){
+        console.error('[firestore-get]', state.table, err);
+        return { data: null, error: err };
+      }
+    });
   }
 
   // === INSERT 実行 ===
@@ -175,51 +182,45 @@
   // === UPDATE 実行 ===
   function execUpdate(state, updates){
     const thenable = {
-      then(resolve){
-        (async () => {
-          try{
-            let ref = _db.collection(state.table);
-            for(const f of state.filters){
-              ref = ref.where(f.col, f.op, f.val);
-            }
-            const snap = await ref.get();
-            await Promise.all(snap.docs.map(d => d.ref.update(sanitize(updates))));
-            resolve({ data: snap.docs.map(d => normalizeDoc(d)), error: null });
-          }catch(err){
-            console.error('[firestore-update]', state.table, err);
-            resolve({ data: null, error: err });
-          }
-        })();
-      },
       eq(col, val){ state.filters.push({col, op:'==', val}); return thenable; },
       in(col, values){ state.filters.push({col, op:'in', val:values}); return thenable; }
     };
-    return thenable;
+    return _attachPromise(thenable, async () => {
+      try{
+        let ref = _db.collection(state.table);
+        for(const f of state.filters){
+          ref = ref.where(f.col, f.op, f.val);
+        }
+        const snap = await ref.get();
+        await Promise.all(snap.docs.map(d => d.ref.update(sanitize(updates))));
+        return { data: snap.docs.map(d => normalizeDoc(d)), error: null };
+      }catch(err){
+        console.error('[firestore-update]', state.table, err);
+        return { data: null, error: err };
+      }
+    });
   }
 
   // === DELETE 実行 ===
   function execDelete(state){
     const thenable = {
-      then(resolve){
-        (async () => {
-          try{
-            let ref = _db.collection(state.table);
-            for(const f of state.filters){
-              ref = ref.where(f.col, f.op, f.val);
-            }
-            const snap = await ref.get();
-            await Promise.all(snap.docs.map(d => d.ref.delete()));
-            resolve({ data: null, error: null });
-          }catch(err){
-            console.error('[firestore-delete]', state.table, err);
-            resolve({ data: null, error: err });
-          }
-        })();
-      },
       eq(col, val){ state.filters.push({col, op:'==', val}); return thenable; },
       in(col, values){ state.filters.push({col, op:'in', val:values}); return thenable; }
     };
-    return thenable;
+    return _attachPromise(thenable, async () => {
+      try{
+        let ref = _db.collection(state.table);
+        for(const f of state.filters){
+          ref = ref.where(f.col, f.op, f.val);
+        }
+        const snap = await ref.get();
+        await Promise.all(snap.docs.map(d => d.ref.delete()));
+        return { data: null, error: null };
+      }catch(err){
+        console.error('[firestore-delete]', state.table, err);
+        return { data: null, error: err };
+      }
+    });
   }
 
   // === ヘルパー ===
