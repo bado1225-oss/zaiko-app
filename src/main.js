@@ -505,12 +505,35 @@ async function reloadAllFromSupabase(){
     }
   });
 
+  // 同じ item_id の apartment_inventory が複数ある場合は1件に正規化
+  // (正規: doc.id === item_id。次点: updated_at が最新のもの)
+  const _aptRowsByItem = {};
+  (aptRes.data || []).forEach(r => {
+    const key = String(r.item_id);
+    const prev = _aptRowsByItem[key];
+    if(!prev){ _aptRowsByItem[key] = r; return; }
+    const prevCanonical = String(prev.id) === key;
+    const curCanonical = String(r.id) === key;
+    if(curCanonical && !prevCanonical){ _aptRowsByItem[key] = r; return; }
+    if(curCanonical === prevCanonical){
+      const pu = prev.updated_at || '', cu = r.updated_at || '';
+      if(String(cu) > String(pu)) _aptRowsByItem[key] = r;
+    }
+    console.warn('[apt dup] item_id に複数の在庫行があります:', key);
+  });
+  const _aptRows = Object.values(_aptRowsByItem);
+
   // items マスタが見つからない apartment_inventory 行も、ユーザーが見えるように残す
   // (以前は自動削除していたが、データを失うリスクがあるため見える化に変更)
-  aptStock = (aptRes.data || []).map(r => {
+  aptStock = _aptRows.map(r => {
     const item = ITEMS.find(i => i.id === r.item_id || itemIdByName[i?.name] === r.item_id || i.name === itemNameById[r.item_id]);
     const fallback = ITEMS.find(i => i.name === itemNameById[r.item_id]);
     const ref = item || fallback;
+    // ユーザーが削除した商品(is_active=false)の残骸はUIに出さない(クラウドのデータは残す)
+    if(ref && ref.isActive === false){
+      console.warn('[apt skip] 削除済み商品の在庫行を非表示:', ref.name);
+      return null;
+    }
     if(!ref){
       // items マスタが見つからなくても、apt 在庫データ自体に name 等が含まれていればそれを使う
       console.warn('[orphan apt]', r.id, r.item_id, r.name);
@@ -541,7 +564,7 @@ async function reloadAllFromSupabase(){
       supplierUrl: ref.supplierUrl || '',
       orderQty: ref.orderQty ?? null
     });
-  });
+  }).filter(Boolean);
 
   orderChecks = {};
   (orderRes.data || []).forEach(r => {
@@ -718,7 +741,8 @@ async function cloudUpsertApartment(itemName){
     itemId = await cloudUpdateItem(item, 'upsert');
   }
   const qty = apt?.stock ?? 0;
-  const payload = { item_id:itemId, quantity:qty, updated_by:currentAuthUser.id };
+  // id に item_id を渡してドキュメントIDを正規化(RPC・移行データと同じID体系にし、重複行を防ぐ)
+  const payload = { id:String(itemId), item_id:itemId, quantity:qty, updated_by:currentAuthUser.id };
   if(apt && Number.isFinite(apt.min))    payload.min_stock    = apt.min;
   if(apt && Number.isFinite(apt.target)) payload.target_stock = apt.target;
   const { error } = await supabaseClient.from('apartment_inventory').upsert(payload, { onConflict: 'item_id' });
