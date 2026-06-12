@@ -11,12 +11,12 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260521h">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260521h">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260521h">
-<link rel="manifest" href="manifest.webmanifest?v=20260521h">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260521i">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260521i">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260521i">
+<link rel="manifest" href="manifest.webmanifest?v=20260521i">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260521h">
+<link rel="stylesheet" href="src/style.css?v=20260521i">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,7 +36,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="トップへ">
-    <img src="icons/icon-512.png?v=20260521h" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260521i" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -109,6 +109,15 @@
             <button class="chip" data-st="unchecked" onclick="setStatusChip('store','unchecked')">☐ 未確認</button>
           </div>
         </div>
+        <div class="form-row">
+          <div class="form-label">並び順</div>
+          <select id="sort-store" class="form-select" onchange="updateFilters()">
+            <option value="不足順" selected>不足が多い順</option>
+            <option value="使用頻度順">使用頻度順</option>
+            <option value="名前順">名前順</option>
+            <option value="手動順">手動並び替え</option>
+          </select>
+        </div>
       </div>
       <!-- 互換性のため残す(新コードからは未使用) -->
       <select id="search-store" style="display:none"><option value=""></option></select>
@@ -168,6 +177,15 @@
             <button class="chip" data-st="warning" onclick="setStatusChip('apt','warning')">🟡 要注意</button>
           </div>
         </div>
+        <div class="form-row">
+          <div class="form-label">並び順</div>
+          <select id="sort-apt" class="form-select" onchange="renderApt()">
+            <option value="不足順" selected>不足が多い順</option>
+            <option value="使用頻度順">使用頻度順</option>
+            <option value="名前順">名前順</option>
+            <option value="手動順">手動並び替え</option>
+          </select>
+        </div>
       </div>
       <!-- 互換性のため残す(新コードからは未使用) -->
       <select id="search-apt" style="display:none"><option value=""></option></select>
@@ -208,6 +226,15 @@
 
     <div id="view-settings" style="display:none">
       <div class="section-label"><span>⚙️ 設定</span></div>
+      <div style="padding:16px 16px 16px">
+        <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">🏷 カテゴリ管理</div>
+        <div style="color:#666;font-size:0.88em;margin-bottom:14px">
+          商品のカテゴリを追加・削除できます。デフォルト3種は削除できません。
+        </div>
+        <div id="category-manager-list" style="margin-bottom:10px"></div>
+        <button class="modal-copy" onclick="addCategoryFlow()">＋ 新しいカテゴリを追加</button>
+      </div>
+      <div style="height:1px;background:var(--line);margin:0 16px"></div>
       <div style="padding:16px 16px 32px">
         <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">☁ クラウド同期（Supabase）</div>
         <div style="color:#666;font-size:0.88em;margin-bottom:14px">
@@ -258,10 +285,11 @@
 
     <div class="form-row">
       <div class="form-label">カテゴリ *</div>
-      <select class="form-select" id="f-category">
+      <select class="form-select" id="f-category" onchange="onCategorySelectChange()">
         <option value="消耗品">消耗品</option>
         <option value="ドリンク">ドリンク</option>
         <option value="食材">食材</option>
+        <option value="__add__">＋ 新規カテゴリを追加…</option>
       </select>
     </div>
 
@@ -444,6 +472,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260521h"></script>
+<script src="src/main.js?v=20260521i"></script>
 </body>
 </html>

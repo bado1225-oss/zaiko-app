@@ -1,5 +1,70 @@
 const STORES = ['神楽坂','男マエ食道'];
-const CATEGORY_OPTIONS = ['消耗品','ドリンク','食材'];
+const DEFAULT_CATEGORIES = ['消耗品','ドリンク','食材'];
+// カテゴリは追加・削除可能(localStorage に保持)
+let CATEGORY_OPTIONS = (() => {
+  try{
+    const raw = localStorage.getItem('inv_categories_v1');
+    if(raw){
+      const arr = JSON.parse(raw);
+      if(Array.isArray(arr) && arr.length) return arr;
+    }
+  }catch(e){}
+  return [...DEFAULT_CATEGORIES];
+})();
+function persistCategories(){
+  try{ localStorage.setItem('inv_categories_v1', JSON.stringify(CATEGORY_OPTIONS)); }catch(e){}
+}
+function addCategoryFlow(){
+  const name = window.prompt('新しいカテゴリ名を入力してください', '');
+  if(name == null) return null;
+  const trimmed = name.trim();
+  if(!trimmed){ alert('カテゴリ名を入力してください'); return null; }
+  if(CATEGORY_OPTIONS.includes(trimmed)){ alert('既に存在するカテゴリです'); return trimmed; }
+  CATEGORY_OPTIONS.push(trimmed);
+  persistCategories();
+  populateCategorySelects();
+  populateCategoryChips();
+  renderCategoryManager();
+  return trimmed;
+}
+function deleteCategoryFlow(cat){
+  if(DEFAULT_CATEGORIES.includes(cat)){ alert('デフォルトカテゴリは削除できません'); return; }
+  const inUseStore = ITEMS.some(i => i.category === cat);
+  const inUseApt = aptStock.some(i => i.category === cat);
+  if(inUseStore || inUseApt){
+    if(!confirm(`「${cat}」を使用中の商品があります。削除すると商品のカテゴリは「消耗品」になります。よろしいですか?`)) return;
+    ITEMS.forEach(i => { if(i.category === cat) i.category = '消耗品'; });
+    aptStock.forEach(i => { if(i.category === cat) i.category = '消耗品'; });
+    persist('inv_items_v3', ITEMS, null);
+    persist('inv_apt_v3', aptStock, 'inv_apt_ts_v3');
+  }else{
+    if(!confirm(`カテゴリ「${cat}」を削除しますか?`)) return;
+  }
+  CATEGORY_OPTIONS = CATEGORY_OPTIONS.filter(c => c !== cat);
+  persistCategories();
+  populateCategorySelects();
+  populateCategoryChips();
+  renderStore(); renderApt();
+}
+// 全モーダルのカテゴリ select を再生成
+function populateCategorySelects(){
+  const sel = document.getElementById('f-category');
+  if(!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = CATEGORY_OPTIONS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('') +
+    '<option value="__add__">＋ 新規カテゴリを追加…</option>';
+  if(CATEGORY_OPTIONS.includes(prev)) sel.value = prev;
+}
+// 検索パネル内のカテゴリチップを再生成
+function populateCategoryChips(){
+  ['store','apt'].forEach(scope => {
+    const el = document.getElementById('category-chips-' + scope);
+    if(!el) return;
+    const current = searchState[scope]?.category || 'all';
+    el.innerHTML = `<button class="chip ${current==='all'?'active':''}" data-cat="all" onclick="setCategoryChip('${scope}','all')">すべて</button>` +
+      CATEGORY_OPTIONS.map(c => `<button class="chip ${current===c?'active':''}" data-cat="${escapeHtml(c)}" onclick="setCategoryChip('${scope}','${escapeHtml(c)}')">${categoryIcon(c)} ${escapeHtml(c)}</button>`).join('');
+  });
+}
 const UNIT_OPTIONS = ['本','袋','箱','ケース','缶','個','kg'];
 
 const DEFAULT_ITEMS = [
@@ -1384,9 +1449,67 @@ function toggleFilterPanel(scope){
   btn.classList.toggle("open", isOpen);
 }
 function updateFilters(){ renderStore(); updateActiveFilterBanner('store'); }
-function sortItems(items, sortValue){
+// 手動並び替えの順序を localStorage に保存
+let manualOrder = (() => {
+  try{ const r = localStorage.getItem('inv_manual_order_v1'); if(r) return JSON.parse(r) || {}; }catch(e){}
+  return { store: [], apt: [] };
+})();
+function persistManualOrder(){
+  try{ localStorage.setItem('inv_manual_order_v1', JSON.stringify(manualOrder)); }catch(e){}
+}
+function ensureManualOrder(scope, currentNames){
+  if(!manualOrder[scope]) manualOrder[scope] = [];
+  let order = manualOrder[scope];
+  // 既存にない名前を末尾に追加
+  currentNames.forEach(n => { if(!order.includes(n)) order.push(n); });
+  // 削除済みの名前を排除
+  manualOrder[scope] = order.filter(n => currentNames.includes(n));
+  return manualOrder[scope];
+}
+function _visibleNamesForReorder(scope){
+  // 表示中のリストを取得(フィルタ適用後)
+  if(scope === 'store') return filteredStoreItems().map(i => i.name);
+  // apt の表示中リストは現在 DOM から取得
+  return Array.from(document.querySelectorAll('#view-apt .apt-card .apt-name')).map(el => el.textContent);
+}
+function _swapInOrder(scope, name, neighborName){
+  const allNames = (scope === 'store' ? ITEMS : aptStock).map(i => i.name);
+  const order = ensureManualOrder(scope, allNames);
+  const fromIdx = order.indexOf(name);
+  const toIdx = order.indexOf(neighborName);
+  if(fromIdx === -1 || toIdx === -1) return;
+  // name を toIdx の位置に移動
+  order.splice(fromIdx, 1);
+  order.splice(toIdx, 0, name);
+  persistManualOrder();
+  if(scope === 'store') renderStore(); else renderApt();
+}
+function moveItemUp(scope, encodedName){
+  const name = decodeURIComponent(encodedName);
+  const visible = _visibleNamesForReorder(scope);
+  const i = visible.indexOf(name);
+  if(i <= 0) return; // 既に先頭、または見えない
+  _swapInOrder(scope, name, visible[i-1]);
+}
+function moveItemDown(scope, encodedName){
+  const name = decodeURIComponent(encodedName);
+  const visible = _visibleNamesForReorder(scope);
+  const i = visible.indexOf(name);
+  if(i < 0 || i >= visible.length - 1) return;
+  _swapInOrder(scope, name, visible[i+1]);
+}
+function sortItems(items, sortValue, scope){
   const arr = [...items];
-  if(sortValue === '使用頻度順'){
+  if(sortValue === '手動順'){
+    const allNames = (scope === 'store' ? ITEMS : aptStock).map(i => i.name);
+    const order = ensureManualOrder(scope || 'store', allNames);
+    const orderMap = new Map(order.map((n, i) => [n, i]));
+    arr.sort((a,b) => {
+      const ai = orderMap.has(a.name) ? orderMap.get(a.name) : 1e9;
+      const bi = orderMap.has(b.name) ? orderMap.get(b.name) : 1e9;
+      return ai - bi || a.name.localeCompare(b.name,'ja');
+    });
+  }else if(sortValue === '使用頻度順'){
     arr.sort((a,b) => getUsageScore(b.name) - getUsageScore(a.name) || a.name.localeCompare(b.name,'ja'));
   }else if(sortValue === '店舗別'){
     arr.sort((a,b) => a.stores.join(',').localeCompare(b.stores.join(','),'ja') || a.name.localeCompare(b.name,'ja'));
@@ -1437,7 +1560,7 @@ function filteredStoreItems(){
     }
     return matchesQ && matchesCategory && matchesStatus;
   });
-  return sortItems(list, sortValue);
+  return sortItems(list, sortValue, 'store');
 }
 function statusClassForCard(current,min){
   const level = getStatusLevel(current,min);
@@ -1559,6 +1682,10 @@ function renderStoreCard(item, focusStoreName=null){
         </div>
       </div>
       <div class="item-header-actions">
+        ${(document.getElementById('sort-store')?.value === '手動順')
+          ? `<button class="reorder-btn" title="上へ" onclick="moveItemUp('store','${encodeURIComponent(item.name)}')">⬆</button>
+             <button class="reorder-btn" title="下へ" onclick="moveItemDown('store','${encodeURIComponent(item.name)}')">⬇</button>`
+          : ''}
         <button class="edit-btn" data-edit-mode="store" data-edit-name="${escapeHtml(item.name)}">✎</button>
       </div>
     </div>
@@ -1873,7 +2000,16 @@ function renderApt(){
     else if(s.status === 'warning') matchesStatus = item.stock > item.min && item.stock <= (item.min || 0) * 1.5;
     return matchesQ && matchesCategory && matchesStatus;
   });
-  if(sortValue === '使用頻度順'){
+  if(sortValue === '手動順'){
+    const allNames = aptStock.map(i => i.name);
+    const order = ensureManualOrder('apt', allNames);
+    const orderMap = new Map(order.map((n, i) => [n, i]));
+    list.sort((a,b) => {
+      const ai = orderMap.has(a.name) ? orderMap.get(a.name) : 1e9;
+      const bi = orderMap.has(b.name) ? orderMap.get(b.name) : 1e9;
+      return ai - bi || a.name.localeCompare(b.name,'ja');
+    });
+  }else if(sortValue === '使用頻度順'){
     list.sort((a,b) => getUsageScore(b.name) - getUsageScore(a.name) || a.name.localeCompare(b.name,'ja'));
   }else if(sortValue === '名前順'){
     list.sort((a,b) => a.name.localeCompare(b.name,'ja'));
@@ -1899,6 +2035,10 @@ function renderApt(){
           <span class="item-meta-sub">${item.supplierUrl ? `<a href="${item.supplierUrl}" style="color:var(--primary);text-decoration:none" target="_blank">${escapeHtml(item.supplier)}</a>` : escapeHtml(item.supplier || '—')}</span>
         </div>
         </div>
+        ${(document.getElementById('sort-apt')?.value === '手動順')
+          ? `<button class="reorder-btn" title="上へ" onclick="moveItemUp('apt','${encodeURIComponent(item.name)}')">⬆</button>
+             <button class="reorder-btn" title="下へ" onclick="moveItemDown('apt','${encodeURIComponent(item.name)}')">⬇</button>`
+          : ''}
         <button class="edit-btn" data-edit-mode="apt" data-edit-idx="${i}">✎</button>
       </div>
       <div class="apt-stock-row">
@@ -2446,6 +2586,33 @@ function categoryIcon(cat){
   if(cat === '消耗品') return '🧴';
   return '📦';
 }
+// 設定タブのカテゴリ一覧を描画
+function renderCategoryManager(){
+  const el = document.getElementById('category-manager-list');
+  if(!el) return;
+  el.innerHTML = CATEGORY_OPTIONS.map(c => {
+    const isDefault = DEFAULT_CATEGORIES.includes(c);
+    return `<div class="category-manager-row">
+      <span class="category-tag ${categoryTagClass(c)}">${categoryIcon(c)} ${escapeHtml(c)}</span>
+      ${isDefault
+        ? '<span class="category-manager-default">デフォルト</span>'
+        : `<button class="category-manager-delete" onclick="deleteCategoryFlow('${escapeHtml(c).replace(/'/g,"\\'")}'); renderCategoryManager();">削除</button>`}
+    </div>`;
+  }).join('');
+}
+// f-category select 操作時のハンドラ: 「＋ 新規追加」が選ばれたら追加フロー起動
+function onCategorySelectChange(){
+  const sel = document.getElementById('f-category');
+  if(!sel) return;
+  if(sel.value === '__add__'){
+    const added = addCategoryFlow();
+    if(added){ sel.value = added; }
+    else {
+      // キャンセル時はデフォルトに戻す
+      sel.value = CATEGORY_OPTIONS[0] || '消耗品';
+    }
+  }
+}
 function quickIncApt(idx, delta){
   const now = Date.now();
   if(now - lastQtyStepAt < QTY_STEP_DEBOUNCE_MS) return;
@@ -2576,7 +2743,8 @@ function openModal(opts){
     if(grp) grp.classList.remove('disabled');
   });
   document.getElementById('f-user').value = localStorage.getItem('inv_user') || '';
-  document.getElementById('f-category').value = '消耗品';
+  populateCategorySelects();
+  document.getElementById('f-category').value = CATEGORY_OPTIONS[0] || '消耗品';
   document.getElementById('f-unit').value = '';
   selectedStores = ['神楽坂','男マエ食道'];
   STORES.forEach(s => document.getElementById('chk-' + s).className = 'store-check checked');
@@ -3102,6 +3270,9 @@ async function bootApp(){
   setLastSaved('apt','inv_apt_ts_v3');
   cleanupOldChecklistEntries();
   updateHeaderUser();
+  populateCategorySelects();
+  populateCategoryChips();
+  renderCategoryManager();
   renderDashboard();
   renderUndoBar();
   renderStore();
