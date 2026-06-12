@@ -1367,6 +1367,7 @@ function productHasUrl(name){
 function getShoppingLists(){
   const storeItems = activeItems().filter(item => {
     const key = item.name + '|店舗';
+    if(!(item.stores && item.stores.length)) return false; // 店舗の紐付けが無い(削除残骸/アパート専用)は対象外
     if(productHasUrl(item.name)) return false;
     if(!(item.min > 0)) return false; // 最低在庫が0なら買い物アラーム出さない
     return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
@@ -1384,7 +1385,11 @@ function getShoppingLists(){
 function dashboardStats(){
   // 補充必要は店舗別の不足ロジックに統一(min=0 stock=0 の品目を誤判定しない)
   const storeIssues = new Set(activeItems().filter(item => item.stores.some(s => getStoreShortage(item, s) > 0)).map(i => i.name));
-  const allNames = new Set([...ITEMS.map(i => i.name), ...aptStock.map(i => i.name)]);
+  // 品目数: 店舗に紐付くアクティブ品 + アパート在庫。削除済み・幽霊(stores空でapt無し)は数えない
+  const allNames = new Set([
+    ...activeItems().filter(i => (i.stores || []).length > 0).map(i => i.name),
+    ...aptStock.map(i => i.name)
+  ]);
   const totalItemCount = allNames.size;
   const refillCount = storeIssues.size;
   // ネット発注必要: aptList + storeShortageList(supplierUrlあり)
@@ -1434,7 +1439,7 @@ function populateSearchSelect(scope){
   const el = document.getElementById('search-' + scope + '-select');
   if(!el) return;
   const prev = el.value;
-  const source = scope === 'store' ? ITEMS : aptStock;
+  const source = scope === 'store' ? activeItems().filter(i => (i.stores || []).length > 0) : aptStock;
   const names = [...new Set(source.map(i => i.name))].sort((a,b) => a.localeCompare(b, 'ja'));
   el.innerHTML = '<option value="">商品名: すべて</option>' +
     names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
@@ -3349,6 +3354,8 @@ async function deleteItem(){
     if(!confirm(`「${editName}」を削除しますか？`)) return;
     const targetName = editName;
     const idx = ITEMS.findIndex(i => i.name === targetName);
+    // splice 前に items の ID を確保(itemIdByName 欠落時のフォールバック)
+    const _removedItem = idx >= 0 ? ITEMS[idx] : null;
     if(idx >= 0) ITEMS.splice(idx,1);
     delete storeStock[targetName];
     ['店舗不足', 'アパート発注'].forEach(scope => {
@@ -3360,7 +3367,7 @@ async function deleteItem(){
       delete shoppingQtyOverrides[k];
     });
     persist('inv_order_checks_v1', orderChecks);
-    const _deletedItemId = itemIdByName[targetName];
+    const _deletedItemId = itemIdByName[targetName] || _removedItem?.id || _removedItem?.itemId || null;
     persist('inv_items_v3', ITEMS, null);
     persist('inv_store_v3', storeStock, 'inv_store_ts_v3');
     if(isCloudReady() && _deletedItemId){
@@ -3410,8 +3417,11 @@ async function deleteItem(){
           await supabaseClient.from('apartment_inventory').delete().eq('item_id', _deletedItemId);
         }
         // 2) 店舗側に同名品目が無ければ items マスタも完全削除
+        // 「店舗側にある」= アクティブかつ店舗の紐付き(stores)が1つ以上ある場合のみ。
+        // stores が空の幽霊エントリ(店舗から削除済みの残骸)は「無い」とみなす
         if(_deletedItemId){
-          const storeStillHas = ITEMS.some(i => i.name === targetName);
+          const storeStillHas = ITEMS.some(i =>
+            i.name === targetName && i.isActive !== false && (i.stores || []).length > 0);
           if(!storeStillHas){
             await supabaseClient.from('item_store_targets').delete().eq('item_id', _deletedItemId);
             await supabaseClient.from('store_inventory').delete().eq('item_id', _deletedItemId);
@@ -3493,6 +3503,7 @@ function renderShopping(){
   var storeItems = activeItems()
     .filter(function(item){
       var key = item.name + '|店舗';
+      if(!(item.stores && item.stores.length)) return false; // 店舗の紐付けが無い(削除残骸/アパート専用)は対象外
       if(productHasUrl(item.name)) return false;
       if(!(item.min > 0)) return false;
       return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
