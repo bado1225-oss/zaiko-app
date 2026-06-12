@@ -67,10 +67,30 @@
             for(const f of state.filters){
               ref = ref.where(f.col, f.op, f.val);
             }
-            if(state.orderBy) ref = ref.orderBy(state.orderBy.col, state.orderBy.asc ? 'asc' : 'desc');
-            if(state.limitN) ref = ref.limit(state.limitN);
+            // where と orderBy の併用は複合インデックスを要するため、client-side でソートする
+            const hasFilter = state.filters.length > 0;
+            const serverOrderBy = !hasFilter && state.orderBy;
+            if(serverOrderBy) ref = ref.orderBy(serverOrderBy.col, serverOrderBy.asc ? 'asc' : 'desc');
+            // limit も serverside で適用するのは「where+orderBy なし」の時のみ。
+            // それ以外は全件取得後にソート → limit。
+            const serverLimit = !hasFilter || !state.orderBy;
+            if(serverLimit && state.limitN) ref = ref.limit(state.limitN);
             const snap = await ref.get();
-            const data = snap.docs.map(d => normalizeDoc(d));
+            let data = snap.docs.map(d => normalizeDoc(d));
+            // client-side sort
+            if(hasFilter && state.orderBy){
+              const col = state.orderBy.col;
+              const dir = state.orderBy.asc ? 1 : -1;
+              data.sort((a, b) => {
+                const av = a[col], bv = b[col];
+                if(av == null && bv == null) return 0;
+                if(av == null) return 1;
+                if(bv == null) return -1;
+                if(typeof av === 'string') return av.localeCompare(bv, 'ja') * dir;
+                return ((av > bv) - (av < bv)) * dir;
+              });
+              if(state.limitN) data = data.slice(0, state.limitN);
+            }
             resolve({ data: single ? (data[0] || null) : data, error: null });
           }catch(err){
             console.error('[firestore-get]', state.table, err);
