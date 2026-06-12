@@ -875,8 +875,8 @@ function getStoreShortage(item, storeName){
   if(!item.stores.includes(storeName)) return 0;
   const current = storeStock[item.name]?.[storeName] ?? 0;
   const storeMin = getStoreMin(item, storeName);
-  // 在庫がゼロのときは最低在庫が未設定(=0)でも 1 以上を不足扱いとし、補充アラームを出す
-  if(current <= 0) return Math.max(1, storeMin);
+  // 最低在庫が 0(=最低設定なし)の場合は不足判定しない
+  if(storeMin <= 0) return 0;
   return Math.max(0, storeMin - current);
 }
 // 補充入力の上限(店舗別 max が設定されていれば max-current で頭打ち)
@@ -1344,11 +1344,13 @@ function getShoppingLists(){
   const storeItems = activeItems().filter(item => {
     const key = item.name + '|店舗';
     if(productHasUrl(item.name)) return false;
+    if(!(item.min > 0)) return false; // 最低在庫が0なら買い物アラーム出さない
     return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
   });
   const aptItems = aptStock.filter(item => {
     const key = item.name + '|アパート';
     if(productHasUrl(item.name)) return false;
+    if(!(item.min > 0)) return false; // 最低在庫が0なら買い物アラーム出さない
     return item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
   });
   const aptNames = new Set(aptItems.map(i => i.name));
@@ -3468,6 +3470,7 @@ function renderShopping(){
     .filter(function(item){
       var key = item.name + '|店舗';
       if(productHasUrl(item.name)) return false;
+      if(!(item.min > 0)) return false;
       return getTotal(item) <= item.min && !item.supplierUrl && !shoppingPurchased[key];
     })
     .map(function(item){
@@ -3483,6 +3486,7 @@ function renderShopping(){
     .filter(function(item){
       var key = item.name + '|アパート';
       if(productHasUrl(item.name)) return false;
+      if(!(item.min > 0)) return false;
       return item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
     })
     .map(function(item){
