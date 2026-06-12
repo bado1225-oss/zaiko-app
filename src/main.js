@@ -445,20 +445,23 @@ function mapItemRow(row, targets, storeThresholds){
     supplierUrl: (row.supplier_url || '').trim(),
     orderQty: row.fixed_order_qty ?? null,
     stores: targets,
-    storeThresholds: storeThresholds || {}
+    storeThresholds: storeThresholds || {},
+    isActive: row.is_active !== false  // 未定義は active 扱い
   });
 }
 async function reloadAllFromSupabase(){
   if(!supabaseClient) return;
   updateSyncStatus('同期中...');
-  const [itemsRes, targetsRes, storeRes, aptRes, orderRes, logsRes] = await Promise.all([
-    supabaseClient.from('items').select('*').eq('is_active', true).order('name'),
+  const [itemsResRaw, targetsRes, storeRes, aptRes, orderRes, logsRes] = await Promise.all([
+    // is_active フィルタはサーバ側で行わない: 非アクティブの items も apt/store 参照のため必要
+    supabaseClient.from('items').select('*').order('name'),
     supabaseClient.from('item_store_targets').select('*').eq('is_enabled', true),
     supabaseClient.from('store_inventory').select('*'),
     supabaseClient.from('apartment_inventory').select('*'),
     supabaseClient.from('order_checks').select('*').eq('checked', true),
     supabaseClient.from('inventory_logs').select('*').order('created_at', {ascending:false}).limit(200)
   ]);
+  const itemsRes = itemsResRaw;
   if(itemsRes.error) throw itemsRes.error;
   if(targetsRes.error) throw targetsRes.error;
   if(storeRes.error) throw storeRes.error;
@@ -1664,6 +1667,8 @@ function filteredStoreItems(){
   const qNorm = normalizeJa(s.text.trim());
   const sortValue = document.getElementById('sort-store')?.value || '不足順';
   let list = ITEMS.filter(item => {
+    // 非アクティブ(削除済み)は店舗一覧から除外。apt 等の参照用には保持
+    if(item.isActive === false) return false;
     // フリーテキスト検索(ひらがな/カタカナ正規化、部分一致)
     const matchesQ = !qNorm || normalizeJa(item.name).includes(qNorm);
     // カテゴリチップ
