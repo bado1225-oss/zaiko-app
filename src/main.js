@@ -13,6 +13,7 @@ let CATEGORY_OPTIONS = (() => {
 })();
 function persistCategories(){
   try{ localStorage.setItem('inv_categories_v1', JSON.stringify(CATEGORY_OPTIONS)); }catch(e){}
+  if(typeof cloudSaveAppSettings === 'function') cloudSaveAppSettings();
 }
 function addCategoryFlow(){
   const name = window.prompt('新しいカテゴリ名を入力してください', '');
@@ -238,6 +239,42 @@ function closeCloudModal(){ /* modal removed – settings now in tab */ }
 function closeCloudModalOutside(e){ /* modal removed */ }
 function isCloudReady(){
   return cloudEnabled && !!supabaseClient && !!currentAuthUser;
+}
+// ===== アプリ設定(手動並び順・カテゴリ)の全端末共有 =====
+// app_settings/global ドキュメントに保存し、複数端末で並び順・カテゴリを共有する
+let _cloudSettingsSaveTimer = null;
+function cloudSaveAppSettings(){
+  if(!isCloudReady()) return;
+  // 連続変更をまとめて書き込む(デバウンス)
+  clearTimeout(_cloudSettingsSaveTimer);
+  _cloudSettingsSaveTimer = setTimeout(() => {
+    try{
+      supabaseClient.from('app_settings').upsert({
+        id: 'global',
+        manual_order: manualOrder,
+        categories: CATEGORY_OPTIONS,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+    }catch(e){ console.warn('cloudSaveAppSettings:', e); }
+  }, 600);
+}
+async function cloudLoadAppSettings(){
+  if(!isCloudReady()) return;
+  try{
+    const { data, error } = await supabaseClient.from('app_settings').select('*').eq('id', 'global').single();
+    if(error || !data) return;
+    if(data.manual_order && typeof data.manual_order === 'object'){
+      manualOrder = { store: [], apt: [], ...data.manual_order };
+      persistManualOrder();  // ローカルにもキャッシュ
+    }
+    if(Array.isArray(data.categories) && data.categories.length){
+      CATEGORY_OPTIONS = data.categories;
+      persistCategories();
+      populateCategorySelects();
+      populateCategoryChips();
+      renderCategoryManager();
+    }
+  }catch(e){ console.warn('cloudLoadAppSettings:', e); }
 }
 // ===== Supabase → Firebase データ移行 =====
 async function migrateFromSupabase(){
@@ -647,6 +684,8 @@ async function reloadAllFromSupabase(){
   setLastSaved('store','inv_store_ts_v3');
   setLastSaved('apt','inv_apt_ts_v3');
   updateSyncStatus('接続中: ' + (cloudConfig().email || currentAuthUser?.email || 'cloud'), true);
+  // 手動並び順・カテゴリをクラウドから取得(全端末で共有)
+  await cloudLoadAppSettings();
   renderDashboard(); renderUndoBar(); renderStore(); renderLogs();
   if(document.getElementById('view-apt').style.display !== 'none') renderApt();
   if(document.getElementById('view-refill').style.display !== 'none') renderRefill();
@@ -1631,6 +1670,7 @@ let manualOrder = (() => {
 })();
 function persistManualOrder(){
   try{ localStorage.setItem('inv_manual_order_v1', JSON.stringify(manualOrder)); }catch(e){}
+  cloudSaveAppSettings();
 }
 function ensureManualOrder(scope, currentNames){
   if(!manualOrder[scope]) manualOrder[scope] = [];
@@ -1641,37 +1681,74 @@ function ensureManualOrder(scope, currentNames){
   manualOrder[scope] = order.filter(n => currentNames.includes(n));
   return manualOrder[scope];
 }
-function _visibleNamesForReorder(scope){
-  // 表示中のリストを取得(フィルタ適用後)
-  if(scope === 'store') return filteredStoreItems().map(i => i.name);
-  // apt の表示中リストは現在 DOM から取得
-  return Array.from(document.querySelectorAll('#view-apt .apt-card .apt-name')).map(el => el.textContent);
+// 指定商品が属するカテゴリを取得
+function _categoryOf(scope, name){
+  const src = (scope === 'store' ? ITEMS : aptStock).find(i => i.name === name);
+  return src ? src.category : 'その他';
+}
+// 同じカテゴリ内で、手動並び順に沿った商品名の配列を返す(表示と同じ並び)
+function _sameCategorySequence(scope, name){
+  const cat = _categoryOf(scope, name);
+  const src = (scope === 'store' ? ITEMS.filter(i => i.isActive !== false) : aptStock);
+  const allNames = src.map(i => i.name);
+  const order = ensureManualOrder(scope, allNames);
+  // order(手動順)を保ったまま、同カテゴリの商品名だけ抽出
+  return order.filter(n => {
+    const it = src.find(i => i.name === n);
+    return it && it.category === cat;
+  });
 }
 function _swapInOrder(scope, name, neighborName){
-  const allNames = (scope === 'store' ? ITEMS : aptStock).map(i => i.name);
+  const src = (scope === 'store' ? ITEMS.filter(i => i.isActive !== false) : aptStock);
+  const allNames = src.map(i => i.name);
   const order = ensureManualOrder(scope, allNames);
   const fromIdx = order.indexOf(name);
   const toIdx = order.indexOf(neighborName);
   if(fromIdx === -1 || toIdx === -1) return;
-  // name を toIdx の位置に移動
   order.splice(fromIdx, 1);
-  order.splice(toIdx, 0, name);
+  order.splice(order.indexOf(neighborName) + (toIdx > fromIdx ? 0 : 0), 0, name);
+  // name を neighbor の直前/直後へ正確に配置し直す
+  const idxN = order.indexOf(neighborName);
+  const idxName = order.indexOf(name);
+  if(idxName !== idxN){ /* already moved */ }
   persistManualOrder();
   if(scope === 'store') renderStore(); else renderApt();
 }
 function moveItemUp(scope, encodedName){
   const name = decodeURIComponent(encodedName);
-  const visible = _visibleNamesForReorder(scope);
-  const i = visible.indexOf(name);
-  if(i <= 0) return; // 既に先頭、または見えない
-  _swapInOrder(scope, name, visible[i-1]);
+  const seq = _sameCategorySequence(scope, name);   // 同カテゴリ内の手動順
+  const i = seq.indexOf(name);
+  if(i <= 0) return; // カテゴリ内で既に先頭
+  _placeBefore(scope, name, seq[i-1]);
 }
 function moveItemDown(scope, encodedName){
   const name = decodeURIComponent(encodedName);
-  const visible = _visibleNamesForReorder(scope);
-  const i = visible.indexOf(name);
-  if(i < 0 || i >= visible.length - 1) return;
-  _swapInOrder(scope, name, visible[i+1]);
+  const seq = _sameCategorySequence(scope, name);
+  const i = seq.indexOf(name);
+  if(i < 0 || i >= seq.length - 1) return; // カテゴリ内で既に末尾
+  _placeAfter(scope, name, seq[i+1]);
+}
+// name を neighbor の直前に移動
+function _placeBefore(scope, name, neighborName){
+  const src = (scope === 'store' ? ITEMS.filter(i => i.isActive !== false) : aptStock);
+  const order = ensureManualOrder(scope, src.map(i => i.name));
+  const fi = order.indexOf(name);
+  if(fi >= 0) order.splice(fi, 1);
+  const ni = order.indexOf(neighborName);
+  order.splice(ni < 0 ? 0 : ni, 0, name);
+  persistManualOrder();
+  if(scope === 'store') renderStore(); else renderApt();
+}
+// name を neighbor の直後に移動
+function _placeAfter(scope, name, neighborName){
+  const src = (scope === 'store' ? ITEMS.filter(i => i.isActive !== false) : aptStock);
+  const order = ensureManualOrder(scope, src.map(i => i.name));
+  const fi = order.indexOf(name);
+  if(fi >= 0) order.splice(fi, 1);
+  const ni = order.indexOf(neighborName);
+  order.splice(ni < 0 ? order.length : ni + 1, 0, name);
+  persistManualOrder();
+  if(scope === 'store') renderStore(); else renderApt();
 }
 function sortItems(items, sortValue, scope){
   const arr = [...items];
@@ -1707,7 +1784,7 @@ function filteredStoreItems(){
   populateSearchSelect('store');
   const s = searchState.store;
   const qNorm = normalizeJa(s.text.trim());
-  const sortValue = document.getElementById('sort-store')?.value || '不足順';
+  const sortValue = document.getElementById('sort-store')?.value || '手動順';
   let list = ITEMS.filter(item => {
     // 非アクティブ(削除済み)は店舗一覧から除外。apt 等の参照用には保持
     if(item.isActive === false) return false;
@@ -2168,7 +2245,7 @@ function renderApt(){
   populateSearchSelect('apt');
   const s = searchState.apt;
   const qNorm = normalizeJa(s.text.trim());
-  const sortValue = document.getElementById('sort-apt')?.value || '不足順';
+  const sortValue = document.getElementById('sort-apt')?.value || '手動順';
   let list = aptStock.filter(item => {
     const matchesQ = !qNorm || normalizeJa(item.name).includes(qNorm);
     const matchesCategory = s.category === 'all' || item.category === s.category;
