@@ -661,7 +661,8 @@ async function cloudRpc(name, params){
 async function cloudUpdateItem(item, mode='upsert'){
   if(!isCloudReady()) return;
   const payload = {
-    id: item.id || undefined,
+    // ID 未指定でも同名の既存ドキュメントがあれば再利用(削除済みは is_active=true で復活、重複作成を防ぐ)
+    id: item.id || itemIdByName[item.name] || undefined,
     name: item.name,
     category: item.category,
     unit: item.unit,
@@ -1360,7 +1361,7 @@ function activeItems(){
 }
 // 同名の items ドキュメントが複数あり、いずれかに supplierUrl があれば「ネット発注対象」とみなす
 function productHasUrl(name){
-  return ITEMS.some(i => i.name === name && i.supplierUrl);
+  return ITEMS.some(i => i.name === name && i.isActive !== false && i.supplierUrl);
 }
 // 店頭購入が必要な商品(supplierUrl 未設定で不足している品目)
 // renderShopping と同一ロジックで判定し、ダッシュボードカウントと表示件数が必ず一致するようにする
@@ -3072,7 +3073,7 @@ async function submitModal(){
       const item = ITEMS.find(i => i.name === editName);
       if(!item) return;
       const oldName = item.name;
-      if(oldName !== name && ITEMS.some(i => i.name === name)){ alert('同じ名前の商品が既に存在します'); return; }
+      if(oldName !== name && ITEMS.some(i => i.name === name && i.isActive !== false)){ alert('同じ名前の商品が既に存在します'); return; }
 
       item.name = name;
       item.category = category;
@@ -3141,6 +3142,18 @@ async function submitModal(){
       renderStore(); renderLogs(); renderDashboard();
       toast(`✓ 「${name}」を更新しました`);
     }else{
+      // 画面に見えていない同名の残骸(削除済み/幽霊)は取り除き、ID を引き継いで再登録可能にする
+      let _reuseId = null;
+      for(let i = ITEMS.length - 1; i >= 0; i--){
+        const e = ITEMS[i];
+        if(e.name !== name) continue;
+        const ghost = e.isActive === false ||
+          ((e.stores || []).length === 0 && !aptStock.some(a => a.name === name));
+        if(ghost){
+          _reuseId = _reuseId || e.id || e.itemId || null;
+          ITEMS.splice(i, 1);
+        }
+      }
       if(ITEMS.find(i => i.name === name)){ alert('同じ名前の商品が既に存在します'); return; }
 
       const newItem = {
@@ -3150,8 +3163,11 @@ async function submitModal(){
         storeThresholds: readStoreThresholdsFromForm(selectedStores),
         supplier: supplier || '',
         supplierUrl: supplierUrl || '',
-        orderQty
+        orderQty,
+        isActive: true
       };
+      // 削除済みの items ドキュメントを再利用(is_active=true で復活させ、重複ドキュメントを防ぐ)
+      if(_reuseId){ newItem.id = _reuseId; newItem.itemId = _reuseId; }
       ITEMS.push(newItem);
 
       storeStock[name] = {};
@@ -3228,7 +3244,7 @@ async function submitModal(){
       if(isCloudReady()){
         try{
           // 店舗にも存在する品目の場合は items テーブルの min/target を上書きしない(店舗側の値を保持)
-          const isSharedWithStore = ITEMS.some(i => i.name === name);
+          const isSharedWithStore = ITEMS.some(i => i.name === name && i.isActive !== false && (i.stores || []).length > 0);
           const cloudPayload = {
             id: item.itemId || itemIdByName[name],
             name: item.name,
@@ -3273,7 +3289,7 @@ async function submitModal(){
       if(isCloudReady()){
         try{
           // 店舗にも存在する品目の場合は items テーブルの min/target を上書きしない
-          const isSharedWithStore = ITEMS.some(i => i.name === newAptItem.name);
+          const isSharedWithStore = ITEMS.some(i => i.name === newAptItem.name && i.isActive !== false && (i.stores || []).length > 0);
           const cloudPayload = {
             name: newAptItem.name,
             category: newAptItem.category,
