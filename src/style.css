@@ -498,6 +498,15 @@ a{color:inherit}
 .category-tag.cat-drink{background:#dbeafe;color:#1e3a8a;border-color:#bfdbfe}
 .category-tag.cat-shouhin{background:#fef3c7;color:#92400e;border-color:#fde68a}
 .category-tag.cat-other{background:#e2e8f0;color:#475569;border-color:#cbd5e1}
+/* 8色パレット(動的カテゴリ用) */
+.category-tag.cat-c0{background:#dbeafe;color:#1e3a8a;border-color:#bfdbfe}
+.category-tag.cat-c1{background:#ffedd5;color:#9a3412;border-color:#fed7aa}
+.category-tag.cat-c2{background:#dcfce7;color:#166534;border-color:#bbf7d0}
+.category-tag.cat-c3{background:#fae8ff;color:#86198f;border-color:#f5d0fe}
+.category-tag.cat-c4{background:#cffafe;color:#155e75;border-color:#a5f3fc}
+.category-tag.cat-c5{background:#fef3c7;color:#92400e;border-color:#fde68a}
+.category-tag.cat-c6{background:#ffe4e6;color:#9f1239;border-color:#fecdd3}
+.category-tag.cat-c7{background:#e2e8f0;color:#475569;border-color:#cbd5e1}
 /* ===== カテゴリ別グループ表示(冷凍庫アプリのフリーザー別表示の応用) ===== */
 .category-group{
   margin:0 16px 14px;border-radius:12px;overflow:hidden;
@@ -513,6 +522,16 @@ a{color:inherit}
 .category-group-header.cat-drink{background:#dbeafe;color:#1e3a8a;border-left-color:#2563eb}
 .category-group-header.cat-shouhin{background:#fef3c7;color:#92400e;border-left-color:#ea580c}
 .category-group-header.cat-other{background:#e2e8f0;color:#475569;border-left-color:#64748b}
+.category-group-header.cat-c0{background:#dbeafe;color:#1e3a8a;border-left-color:#2563eb}
+.category-group-header.cat-c1{background:#ffedd5;color:#9a3412;border-left-color:#ea580c}
+.category-group-header.cat-c2{background:#dcfce7;color:#166534;border-left-color:#16a34a}
+.category-group-header.cat-c3{background:#fae8ff;color:#86198f;border-left-color:#c026d3}
+.category-group-header.cat-c4{background:#cffafe;color:#155e75;border-left-color:#0891b2}
+.category-group-header.cat-c5{background:#fef3c7;color:#92400e;border-left-color:#d97706}
+.category-group-header.cat-c6{background:#ffe4e6;color:#9f1239;border-left-color:#e11d48}
+.category-group-header.cat-c7{background:#e2e8f0;color:#475569;border-left-color:#64748b}
+/* 保管場所グループ(単一店舗表示) */
+.loc-group-header{background:#eef2ff;color:#3730a3;border-left-color:#6366f1}
 .category-group-icon{font-size:18px;line-height:1}
 .category-group-name{flex:1;font-size:14px}
 .category-group-count{
@@ -543,6 +562,12 @@ a{color:inherit}
   font-size:12px;font-weight:700;cursor:pointer;
 }
 .category-manager-delete:active{background:#fee2e2}
+.category-manager-rename{
+  padding:5px 10px;border-radius:6px;background:#fff;border:1px solid #bfdbfe;color:#1d4ed8;
+  font-size:12px;font-weight:700;cursor:pointer;
+}
+.category-manager-rename:active{background:#dbeafe}
+.category-tag.loc-tag{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
 /* 手動並び替えボタン */
 .reorder-btn{
   width:30px;height:30px;border-radius:6px;

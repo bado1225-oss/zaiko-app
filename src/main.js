@@ -1,12 +1,18 @@
 const STORES = ['神楽坂','男マエ食道'];
-const DEFAULT_CATEGORIES = ['消耗品','ドリンク','食材'];
+const DEFAULT_CATEGORIES = ['ドリンク','食材・調味料','紙・衛生','手袋・除菌','袋・ラップ','箸・食器'];
+const OLD_DEFAULT_CATEGORIES = ['消耗品','ドリンク','食材'];
 // カテゴリは追加・削除可能(localStorage に保持)
 let CATEGORY_OPTIONS = (() => {
   try{
     const raw = localStorage.getItem('inv_categories_v1');
     if(raw){
       const arr = JSON.parse(raw);
-      if(Array.isArray(arr) && arr.length) return arr;
+      if(Array.isArray(arr) && arr.length){
+        // 旧3カテゴリのままなら新カテゴリへ自動アップグレード
+        const isOldDefault = arr.length === 3 && OLD_DEFAULT_CATEGORIES.every(c => arr.includes(c));
+        if(isOldDefault) return [...DEFAULT_CATEGORIES];
+        return arr;
+      }
     }
   }catch(e){}
   return [...DEFAULT_CATEGORIES];
@@ -14,6 +20,37 @@ let CATEGORY_OPTIONS = (() => {
 function persistCategories(){
   try{ localStorage.setItem('inv_categories_v1', JSON.stringify(CATEGORY_OPTIONS)); }catch(e){}
   if(typeof cloudSaveAppSettings === 'function') cloudSaveAppSettings();
+}
+// 全商品を商品名から自動でカテゴリ分けし直す(店舗・アパート両方、クラウドも更新)
+async function recategorizeAllItems(){
+  if(!confirm('登録済みの全商品を、商品名から自動でカテゴリ分けし直します。よろしいですか?')) return;
+  // 新カテゴリを必ず候補に含める
+  DEFAULT_CATEGORIES.forEach(c => { if(!CATEGORY_OPTIONS.includes(c)) CATEGORY_OPTIONS.push(c); });
+  persistCategories();
+  let changed = 0;
+  const apply = (arr) => arr.forEach(it => {
+    const g = guessCategoryByName(it.name);
+    const next = g || it.category || CATEGORY_OPTIONS[0];
+    if(next && next !== it.category){ it.category = next; changed++; }
+  });
+  apply(ITEMS);
+  apply(aptStock);
+  persist('inv_items_v3', ITEMS, null);
+  persist('inv_apt_v3', aptStock, 'inv_apt_ts_v3');
+  // クラウド反映(items の category を更新)
+  if(isCloudReady()){
+    const seen = new Set();
+    for(const it of ITEMS.concat(aptStock)){
+      const iid = it.id || it.itemId || itemIdByName[it.name];
+      if(!iid || seen.has(iid)) continue;
+      seen.add(iid);
+      try{ await supabaseClient.from('items').update({ category: it.category }).eq('id', iid); }
+      catch(e){ console.warn('recategorize cloud:', e); }
+    }
+  }
+  populateCategorySelects(); populateCategoryChips(); renderCategoryManager();
+  renderStore(); renderApt(); renderDashboard();
+  toast(`✓ ${changed}件のカテゴリを分け直しました`);
 }
 function addCategoryFlow(){
   const name = window.prompt('新しいカテゴリ名を入力してください', '');
@@ -29,15 +66,17 @@ function addCategoryFlow(){
   return trimmed;
 }
 function deleteCategoryFlow(cat){
-  if(DEFAULT_CATEGORIES.includes(cat)){ alert('デフォルトカテゴリは削除できません'); return; }
+  if(CATEGORY_OPTIONS.length <= 1){ alert('カテゴリは最低1つ必要です'); return; }
+  const fallback = CATEGORY_OPTIONS.find(c => c !== cat) || 'その他';
   const inUseStore = ITEMS.some(i => i.category === cat);
   const inUseApt = aptStock.some(i => i.category === cat);
   if(inUseStore || inUseApt){
-    if(!confirm(`「${cat}」を使用中の商品があります。削除すると商品のカテゴリは「消耗品」になります。よろしいですか?`)) return;
-    ITEMS.forEach(i => { if(i.category === cat) i.category = '消耗品'; });
-    aptStock.forEach(i => { if(i.category === cat) i.category = '消耗品'; });
+    if(!confirm(`「${cat}」を使用中の商品があります。削除すると商品のカテゴリは「${fallback}」になります。よろしいですか?`)) return;
+    ITEMS.forEach(i => { if(i.category === cat) i.category = fallback; });
+    aptStock.forEach(i => { if(i.category === cat) i.category = fallback; });
     persist('inv_items_v3', ITEMS, null);
     persist('inv_apt_v3', aptStock, 'inv_apt_ts_v3');
+    cloudUpdateCategoryForAll(cat, fallback);
   }else{
     if(!confirm(`カテゴリ「${cat}」を削除しますか?`)) return;
   }
@@ -46,6 +85,31 @@ function deleteCategoryFlow(cat){
   populateCategorySelects();
   populateCategoryChips();
   renderStore(); renderApt();
+}
+// カテゴリ名を変更(使用中の商品も追従)
+function renameCategoryFlow(cat){
+  const next = window.prompt(`「${cat}」を何という名前に変更しますか?`, cat);
+  if(next == null) return;
+  const t = next.trim();
+  if(!t){ alert('カテゴリ名を入力してください'); return; }
+  if(t === cat){ return; }
+  if(CATEGORY_OPTIONS.includes(t)){ alert('同じ名前のカテゴリが既に存在します'); return; }
+  CATEGORY_OPTIONS = CATEGORY_OPTIONS.map(c => c === cat ? t : c);
+  ITEMS.forEach(i => { if(i.category === cat) i.category = t; });
+  aptStock.forEach(i => { if(i.category === cat) i.category = t; });
+  persistCategories();
+  persist('inv_items_v3', ITEMS, null);
+  persist('inv_apt_v3', aptStock, 'inv_apt_ts_v3');
+  cloudUpdateCategoryForAll(cat, t);
+  populateCategorySelects(); populateCategoryChips(); renderCategoryManager();
+  renderStore(); renderApt(); renderDashboard();
+  toast(`✓ カテゴリ名を「${t}」に変更しました`);
+}
+// クラウドの items.category を一括更新(旧カテゴリ→新カテゴリ)
+async function cloudUpdateCategoryForAll(fromCat, toCat){
+  if(!isCloudReady()) return;
+  try{ await supabaseClient.from('items').update({ category: toCat }).eq('category', fromCat); }
+  catch(e){ console.warn('cloudUpdateCategoryForAll:', e); }
 }
 // 全モーダルのカテゴリ select を再生成
 function populateCategorySelects(){
@@ -67,6 +131,40 @@ function populateCategoryChips(){
   });
 }
 const UNIT_OPTIONS = ['本','袋','箱','ケース','缶','個','kg'];
+
+// ===== 保管場所(店舗ごとに自由編集できるリスト) =====
+let storageLocations = (() => {
+  try{ const r = localStorage.getItem('inv_storage_locations_v1'); if(r){ const o = JSON.parse(r); if(o && typeof o === 'object') return { '神楽坂': [], '男マエ食道': [], ...o }; } }catch(e){}
+  return { '神楽坂': [], '男マエ食道': [] };
+})();
+function persistStorageLocations(){
+  try{ localStorage.setItem('inv_storage_locations_v1', JSON.stringify(storageLocations)); }catch(e){}
+  if(typeof cloudSaveAppSettings === 'function') cloudSaveAppSettings();
+}
+function getItemLocation(item, store){
+  return (item.storeLocations && item.storeLocations[store]) || '';
+}
+function addStorageLocationFlow(store){
+  const name = window.prompt(`${store} の新しい保管場所を入力してください\n(例: 1F倉庫 / 2F棚 / 冷蔵庫 / バックヤード)`, '');
+  if(name == null) return null;
+  const t = name.trim();
+  if(!t){ alert('保管場所を入力してください'); return null; }
+  if(!storageLocations[store]) storageLocations[store] = [];
+  if(!storageLocations[store].includes(t)) storageLocations[store].push(t);
+  persistStorageLocations();
+  renderStorageLocationManager();
+  return t;
+}
+function deleteStorageLocationFlow(store, loc){
+  if(!confirm(`${store} の保管場所「${loc}」を削除しますか?\n(この場所が設定された商品は「未設定」になります)`)) return;
+  storageLocations[store] = (storageLocations[store] || []).filter(l => l !== loc);
+  // 使用中の商品の location をクリア
+  ITEMS.forEach(it => { if(it.storeLocations && it.storeLocations[store] === loc) it.storeLocations[store] = ''; });
+  persistStorageLocations();
+  persist('inv_items_v3', ITEMS, null);
+  renderStorageLocationManager();
+  renderStore();
+}
 
 const DEFAULT_ITEMS = [
   {name:'天然水 SPARKLING', unit:'ケース', min:3, target:6, category:'ドリンク', stores:['神楽坂','男マエ食道']},
@@ -154,12 +252,26 @@ function clampInt(value,min=0,max=9999){
   if(!Number.isFinite(n)) return null;
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
+// 商品名から新カテゴリを推測(明示カテゴリが新カテゴリ一覧にあればそれを優先)
+function guessCategoryByName(name){
+  const s = String(name || '');
+  if(/コーラ|ジンジャー|SPARKLING|サイダー|炭酸|ジュース|お茶|ウーロン|コーヒー|水(?!切)|ペット|ドリンク|PET/i.test(s)) return 'ドリンク';
+  if(/手袋|ニトリル|ゴム手|プラ手|除菌|アルコール|サニタイザー|ハンドスキッシュ|消毒|洗剤|ケミクール|漂白/i.test(s)) return '手袋・除菌';
+  if(/ティッシュ|トイレットペーパー|ペーパータオル|おしぼり|キッチンペーパー|ナプキン|紙ナプ/i.test(s)) return '紙・衛生';
+  // 箸・食器は袋より先に判定(「双生8寸…/袋」のように"袋"を含む割り箸を正しく分類)
+  if(/箸|割り箸|双生|楊枝|つまようじ|スプーン|フォーク|ストロー|串|食器|皿|カップ|コップ/i.test(s)) return '箸・食器';
+  if(/ラップ|ポリ袋|ゴミ袋|ビニール|キッチンラップ|アルミホイル|ホイル|袋/i.test(s)) return '袋・ラップ';
+  if(/油|醤油|味噌|塩|砂糖|だし|出汁|ソフトコンク|調味|海藻|食材|米|粉|ソース|ケチャップ|マヨ/i.test(s)) return '食材・調味料';
+  return '';
+}
 function inferCategory(name,current){
   if(current && CATEGORY_OPTIONS.includes(current)) return current;
-  const s = String(name || '');
-  if(/コーラ|ジンジャー|SPARKLING|水|炭酸/i.test(s)) return 'ドリンク';
-  if(/油|ソフトコンク/i.test(s)) return '食材';
-  return '消耗品';
+  const g = guessCategoryByName(name);
+  if(g) return g;
+  // 旧カテゴリからの移行: 食材→食材・調味料、ドリンク→ドリンク、消耗品→推測 or その他
+  if(current === '食材') return '食材・調味料';
+  if(current === 'ドリンク') return 'ドリンク';
+  return CATEGORY_OPTIONS[0] || 'その他';
 }
 function normalizeStoreItem(item){
   return {
@@ -170,6 +282,7 @@ function normalizeStoreItem(item){
     orderQty: item.orderQty ?? null,
     stores: item.stores || ['神楽坂','男マエ食道'],
     storeThresholds: item.storeThresholds || {},
+    storeLocations: item.storeLocations || {},
     ...item,
     name: (item.name || '').trim(),  // normalize whitespace
   };
@@ -253,6 +366,7 @@ function cloudSaveAppSettings(){
         id: 'global',
         manual_order: manualOrder,
         categories: CATEGORY_OPTIONS,
+        storage_locations: storageLocations,
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' });
     }catch(e){ console.warn('cloudSaveAppSettings:', e); }
@@ -269,10 +383,15 @@ async function cloudLoadAppSettings(){
     }
     if(Array.isArray(data.categories) && data.categories.length){
       CATEGORY_OPTIONS = data.categories;
-      persistCategories();
+      try{ localStorage.setItem('inv_categories_v1', JSON.stringify(CATEGORY_OPTIONS)); }catch(e){}
       populateCategorySelects();
       populateCategoryChips();
       renderCategoryManager();
+    }
+    if(data.storage_locations && typeof data.storage_locations === 'object'){
+      storageLocations = { '神楽坂': [], '男マエ食道': [], ...data.storage_locations };
+      try{ localStorage.setItem('inv_storage_locations_v1', JSON.stringify(storageLocations)); }catch(e){}
+      renderStorageLocationManager();
     }
   }catch(e){ console.warn('cloudLoadAppSettings:', e); }
 }
@@ -469,7 +588,7 @@ async function upsertMyProfile(){
     display_name: displayName
   });
 }
-function mapItemRow(row, targets, storeThresholds){
+function mapItemRow(row, targets, storeThresholds, storeLocations){
   return normalizeStoreItem({
     id: row.id,
     itemId: row.id,
@@ -483,6 +602,7 @@ function mapItemRow(row, targets, storeThresholds){
     orderQty: row.fixed_order_qty ?? null,
     stores: targets,
     storeThresholds: storeThresholds || {},
+    storeLocations: storeLocations || {},
     isActive: row.is_active !== false  // 未定義は active 扱い
   });
 }
@@ -510,6 +630,7 @@ async function reloadAllFromSupabase(){
   itemNameById = {};
   const targetMap = {};
   const thresholdMap = {};
+  const locationMap = {};
   (targetsRes.data || []).forEach(t => {
     const name = STORE_NAME_MAP[t.store_code];
     if(!targetMap[t.item_id]) targetMap[t.item_id] = [];
@@ -521,12 +642,16 @@ async function reloadAllFromSupabase(){
       if(t.max_stock != null) entry.max = t.max_stock;
       thresholdMap[t.item_id][name] = entry;
     }
+    if(name && t.location){
+      if(!locationMap[t.item_id]) locationMap[t.item_id] = {};
+      locationMap[t.item_id][name] = t.location;
+    }
   });
 
   ITEMS = (itemsRes.data || []).map(row => {
     itemIdByName[row.name] = row.id;
     itemNameById[row.id] = row.name;
-    return mapItemRow(row, targetMap[row.id] || [], thresholdMap[row.id] || {});
+    return mapItemRow(row, targetMap[row.id] || [], thresholdMap[row.id] || {}, locationMap[row.id] || {});
   });
 
   storeStock = {};
@@ -728,6 +853,8 @@ async function cloudReplaceStoreTargets(item){
     const row = { item_id:item.id, store_code: STORE_CODE_MAP[s], is_enabled:true };
     if(Number.isFinite(t.min)) row.min_stock = t.min;
     if(Number.isFinite(t.max)) row.max_stock = t.max;
+    const loc = item.storeLocations?.[s];
+    if(loc) row.location = loc;
     return row;
   });
   if(rows.length) {
@@ -2000,14 +2127,46 @@ function renderStore(){
     focusStore = storeViewFilter;
   }
   document.getElementById('store-count-pill').textContent = filtered.length + '件';
-  c.innerHTML = renderItemsByCategory(filtered, item => renderStoreCard(item, focusStore));
+  // 単一店舗表示は保管場所でグループ化。すべて表示はカテゴリでグループ化
+  if(focusStore){
+    c.innerHTML = renderItemsByLocation(filtered, focusStore, item => renderStoreCard(item, focusStore));
+  }else{
+    c.innerHTML = renderItemsByCategory(filtered, item => renderStoreCard(item, focusStore));
+  }
   bindEditButtons();
   renderAllTransferQtyControls();
+}
+// 単一店舗で、保管場所ごとにグループ化して描画する
+function renderItemsByLocation(items, store, renderItem){
+  const locs = storageLocations[store] || [];
+  const groups = {};
+  locs.forEach(l => groups[l] = []);
+  groups['未設定'] = [];
+  items.forEach(item => {
+    const loc = getItemLocation(item, store);
+    if(loc && groups[loc]) groups[loc].push(item);
+    else groups['未設定'].push(item);
+  });
+  const orderedLocs = locs.concat(['未設定']).filter(l => groups[l] && groups[l].length > 0);
+  if(orderedLocs.length === 0) return '<div class="empty"><div class="empty-icon">📭</div>該当する商品がありません</div>';
+  return orderedLocs.map(loc => {
+    const locItems = groups[loc];
+    return `<div class="category-group">
+      <div class="category-group-header loc-group-header">
+        <span class="category-group-icon">📍</span>
+        <span class="category-group-name">${escapeHtml(loc)}</span>
+        <span class="category-group-count">${locItems.length}件</span>
+      </div>
+      <div class="category-group-items">
+        ${locItems.map(item => renderItem(item)).join('')}
+      </div>
+    </div>`;
+  }).join('');
 }
 // 任意のアイテムリストをカテゴリ別に分類して、各カテゴリの色付きセクションとして描画する
 // renderItem: (item) => HTMLString — カードレンダラを注入
 function renderItemsByCategory(items, renderItem){
-  const order = ['食材', 'ドリンク', '消耗品'];
+  const order = [...CATEGORY_OPTIONS];
   const groups = {};
   order.forEach(c => groups[c] = []);
   groups['その他'] = [];
@@ -2828,29 +2987,60 @@ async function openManualTransfer(encodedName, encodedStore){
     alert('補充に失敗しました: ' + (err?.message || err));
   }
 }
+// カテゴリ名から安定した配色クラス(cat-c0..cat-c7)を決定。ユーザー追加カテゴリにも自動で色が付く
 function categoryTagClass(cat){
-  if(cat === '食材') return 'cat-food';
-  if(cat === 'ドリンク') return 'cat-drink';
-  if(cat === '消耗品') return 'cat-shouhin';
-  return 'cat-other';
+  const known = {
+    'ドリンク':'cat-c0', '食材・調味料':'cat-c1', '紙・衛生':'cat-c2',
+    '手袋・除菌':'cat-c3', '袋・ラップ':'cat-c4', '箸・食器':'cat-c5',
+    // 旧カテゴリの後方互換
+    '食材':'cat-c1', '消耗品':'cat-c2', 'その他':'cat-c7'
+  };
+  if(known[cat]) return known[cat];
+  let h = 0; for(let i=0;i<cat.length;i++){ h = (h*31 + cat.charCodeAt(i)) >>> 0; }
+  return 'cat-c' + (h % 8);
 }
 function categoryIcon(cat){
-  if(cat === '食材') return '🥬';
-  if(cat === 'ドリンク') return '🥤';
-  if(cat === '消耗品') return '🧴';
-  return '📦';
+  const m = {
+    'ドリンク':'🥤', '食材・調味料':'🍳', '紙・衛生':'🧻',
+    '手袋・除菌':'🧤', '袋・ラップ':'🛍', '箸・食器':'🥢',
+    '食材':'🍳', '消耗品':'🧴', 'その他':'📦'
+  };
+  return m[cat] || '📦';
 }
 // 設定タブのカテゴリ一覧を描画
 function renderCategoryManager(){
   const el = document.getElementById('category-manager-list');
   if(!el) return;
   el.innerHTML = CATEGORY_OPTIONS.map(c => {
-    const isDefault = DEFAULT_CATEGORIES.includes(c);
+    const esc = String(c).replace(/'/g,"\\'");
     return `<div class="category-manager-row">
       <span class="category-tag ${categoryTagClass(c)}">${categoryIcon(c)} ${escapeHtml(c)}</span>
-      ${isDefault
-        ? '<span class="category-manager-default">デフォルト</span>'
-        : `<button class="category-manager-delete" onclick="deleteCategoryFlow('${escapeHtml(c).replace(/'/g,"\\'")}'); renderCategoryManager();">削除</button>`}
+      <span style="display:flex;gap:6px">
+        <button class="category-manager-rename" onclick="renameCategoryFlow('${esc}')">名前変更</button>
+        <button class="category-manager-delete" onclick="deleteCategoryFlow('${esc}'); renderCategoryManager();">削除</button>
+      </span>
+    </div>`;
+  }).join('');
+}
+// 保管場所マネージャ(店舗ごと)
+function renderStorageLocationManager(){
+  const el = document.getElementById('storage-location-manager');
+  if(!el) return;
+  el.innerHTML = STORES.map(store => {
+    const list = storageLocations[store] || [];
+    const rows = list.length
+      ? list.map(l => {
+          const esc = String(l).replace(/'/g,"\\'");
+          return `<div class="category-manager-row">
+            <span class="category-tag loc-tag">📍 ${escapeHtml(l)}</span>
+            <button class="category-manager-delete" onclick="deleteStorageLocationFlow('${store}','${esc}')">削除</button>
+          </div>`;
+        }).join('')
+      : '<div style="color:#94a3b8;font-size:0.85em;padding:4px 0">保管場所が未登録です</div>';
+    return `<div style="margin-bottom:14px">
+      <div style="font-weight:700;font-size:0.95em;margin-bottom:6px">🏪 ${escapeHtml(store)}</div>
+      ${rows}
+      <button class="modal-copy" style="margin-top:6px" onclick="addStorageLocationFlow('${store}')">＋ ${escapeHtml(store)} に保管場所を追加</button>
     </div>`;
   }).join('');
 }
@@ -2995,6 +3185,7 @@ function openModal(opts){
     if(maxEl) maxEl.value = '';
     const grp = document.getElementById('thr-grp-' + s);
     if(grp) grp.classList.remove('disabled');
+    populateStoreLocSelect(s, '');  // 保管場所セレクトを再生成
   });
   document.getElementById('f-user').value = localStorage.getItem('inv_user') || '';
   populateCategorySelects();
@@ -3045,7 +3236,7 @@ function openModal(opts){
     document.getElementById('f-store-order').value = item.orderQty != null ? item.orderQty : '';
     selectedStores = [...item.stores];
     STORES.forEach(s => document.getElementById('chk-' + s).className = 'store-check' + (selectedStores.includes(s) ? ' checked' : ''));
-    // 店舗別しきい値を既存値から復元
+    // 店舗別しきい値・保管場所を既存値から復元
     STORES.forEach(s => {
       const t = item.storeThresholds?.[s] || {};
       const minEl = document.getElementById('f-storemin-' + s);
@@ -3054,6 +3245,7 @@ function openModal(opts){
       if(maxEl) maxEl.value = Number.isFinite(t.max) ? t.max : '';
       const grp = document.getElementById('thr-grp-' + s);
       if(grp) grp.classList.toggle('disabled', !selectedStores.includes(s));
+      populateStoreLocSelect(s, getItemLocation(item, s));
     });
   }else if(isEdit && opts.mode === 'apt'){
     const item = aptStock[opts.editIdx];
@@ -3086,6 +3278,35 @@ function readStoreThresholdsFromForm(activeStores){
     if(minRaw !== '') entry.min = Math.max(0, Math.min(9999, parseInt(minRaw, 10) || 0));
     if(maxRaw !== '') entry.max = Math.max(0, Math.min(9999, parseInt(maxRaw, 10) || 0));
     if(Object.keys(entry).length) result[s] = entry;
+  });
+  return result;
+}
+// 保管場所セレクトを storageLocations から再生成し、current を選択状態にする
+function populateStoreLocSelect(store, current){
+  const el = document.getElementById('f-storeloc-' + store);
+  if(!el) return;
+  const list = storageLocations[store] || [];
+  el.innerHTML = '<option value="">未設定</option>' +
+    list.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('') +
+    '<option value="__add__">＋ 新しい保管場所を追加…</option>';
+  if(current && list.includes(current)) el.value = current; else el.value = '';
+}
+function onStoreLocSelectChange(store){
+  const el = document.getElementById('f-storeloc-' + store);
+  if(!el) return;
+  if(el.value === '__add__'){
+    const added = addStorageLocationFlow(store);
+    populateStoreLocSelect(store, added || '');
+  }
+}
+// フォームから保管場所を読み取る
+function readStoreLocationsFromForm(activeStores){
+  const result = {};
+  STORES.forEach(s => {
+    if(!activeStores.includes(s)) return;
+    const el = document.getElementById('f-storeloc-' + s);
+    const v = (el?.value || '').trim();
+    if(v && v !== '__add__') result[s] = v;
   });
   return result;
 }
@@ -3161,8 +3382,9 @@ async function submitModal(){
       item.supplier = supplier || '';
       item.supplierUrl = supplierUrl || '';
       item.orderQty = orderQty;
-      // 店舗別しきい値を読み取り
+      // 店舗別しきい値・保管場所を読み取り
       item.storeThresholds = readStoreThresholdsFromForm(selectedStores);
+      item.storeLocations = readStoreLocationsFromForm(selectedStores);
 
       if(oldName !== name){
         storeStock[name] = storeStock[oldName] || {};
@@ -3238,6 +3460,7 @@ async function submitModal(){
         min:minVal, target:targetVal,
         stores:[...selectedStores],
         storeThresholds: readStoreThresholdsFromForm(selectedStores),
+        storeLocations: readStoreLocationsFromForm(selectedStores),
         supplier: supplier || '',
         supplierUrl: supplierUrl || '',
         orderQty,
@@ -3547,6 +3770,7 @@ async function bootApp(){
   populateCategorySelects();
   populateCategoryChips();
   renderCategoryManager();
+  renderStorageLocationManager();
   renderDashboard();
   renderUndoBar();
   renderStore();

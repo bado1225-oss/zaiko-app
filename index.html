@@ -11,17 +11,17 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260613d">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260613d">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260613d">
-<link rel="manifest" href="manifest.webmanifest?v=20260613d">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260613e">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260613e">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260613e">
+<link rel="manifest" href="manifest.webmanifest?v=20260613e">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260613d">
+<link rel="stylesheet" href="src/style.css?v=20260613e">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<script src="src/firebase-adapter.js?v=20260613d"></script>
+<script src="src/firebase-adapter.js?v=20260613e"></script>
 </head>
 <body>
 <div class="app">
@@ -40,7 +40,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="トップへ">
-    <img src="icons/icon-512.png?v=20260613d" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260613e" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -233,10 +233,20 @@
       <div style="padding:16px 16px 16px">
         <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">🏷 カテゴリ管理</div>
         <div style="color:#666;font-size:0.88em;margin-bottom:14px">
-          商品のカテゴリを追加・削除できます。デフォルト3種は削除できません。
+          商品のカテゴリを追加・削除できます。
         </div>
         <div id="category-manager-list" style="margin-bottom:10px"></div>
         <button class="modal-copy" onclick="addCategoryFlow()">＋ 新しいカテゴリを追加</button>
+        <button class="modal-copy" style="margin-top:8px" onclick="recategorizeAllItems()">📋 商品を自動でカテゴリ分けし直す</button>
+      </div>
+      <div style="height:1px;background:var(--line);margin:0 16px"></div>
+      <div style="padding:16px 16px 16px">
+        <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">📍 保管場所の管理</div>
+        <div style="color:#666;font-size:0.88em;margin-bottom:14px">
+          店舗ごとに保管場所を登録できます。商品の編集画面で店舗ごとに保管場所を選べます。<br>
+          「神楽坂だけ表示」「男マエ食道だけ表示」のときに、保管場所ごとに並びます。
+        </div>
+        <div id="storage-location-manager"></div>
       </div>
       <div style="height:1px;background:var(--line);margin:0 16px"></div>
       <div style="padding:16px 16px 16px">
@@ -353,6 +363,9 @@
             <label class="threshold-field"><span>最低</span><input class="form-input threshold-input" id="f-storemin-神楽坂" type="number" inputmode="numeric" min="0" max="9999" placeholder="既定"></label>
             <label class="threshold-field"><span>過剰</span><input class="form-input threshold-input" id="f-storemax-神楽坂" type="number" inputmode="numeric" min="0" max="9999" placeholder="なし"></label>
           </div>
+          <label class="threshold-field" style="margin-top:8px"><span>保管場所</span>
+            <select class="form-select" id="f-storeloc-神楽坂" onchange="onStoreLocSelectChange('神楽坂')"></select>
+          </label>
         </div>
         <div class="store-threshold-group" id="thr-grp-男マエ食道">
           <div class="store-check checked" id="chk-男マエ食道" onclick="toggleStore('男マエ食道')">男マエ食道</div>
@@ -360,6 +373,9 @@
             <label class="threshold-field"><span>最低</span><input class="form-input threshold-input" id="f-storemin-男マエ食道" type="number" inputmode="numeric" min="0" max="9999" placeholder="既定"></label>
             <label class="threshold-field"><span>過剰</span><input class="form-input threshold-input" id="f-storemax-男マエ食道" type="number" inputmode="numeric" min="0" max="9999" placeholder="なし"></label>
           </div>
+          <label class="threshold-field" style="margin-top:8px"><span>保管場所</span>
+            <select class="form-select" id="f-storeloc-男マエ食道" onchange="onStoreLocSelectChange('男マエ食道')"></select>
+          </label>
         </div>
       </div>
     </div>
@@ -496,6 +512,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260613d"></script>
+<script src="src/main.js?v=20260613e"></script>
 </body>
 </html>
