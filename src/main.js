@@ -931,6 +931,184 @@ async function cloudUpsertApartment(itemName){
   if(error) throw error;
 }
 
+// ===== 重複した商品(同名・別ID)を1つに統合するメンテナンス機能 =====
+// 在庫が item_id ごとにバラバラに保存されてしまった重複を、合計して正規IDへ集約する。
+// 在庫の総量は保たれ(合算)、重複側の商品は無効化(is_active=false)するだけで完全削除はしない(復元可能)。
+let mergeDupInFlight = false;
+// Firestore Timestamp / 文字列 等から比較用のミリ秒を得る
+function _tsMillis(r){
+  const t = r && r.updated_at;
+  if(!t) return 0;
+  if(typeof t.toMillis === 'function') return t.toMillis();
+  if(typeof t.seconds === 'number') return t.seconds * 1000;
+  if(typeof t._seconds === 'number') return t._seconds * 1000;
+  const d = Date.parse(t);
+  return isNaN(d) ? 0 : d;
+}
+// 同じキーに複数ドキュメントがある場合、代表を1つ選ぶ(最新 updated_at、無ければ数量が大きい方)
+function _pickRep(rows){
+  return rows.reduce((best, r) => {
+    if(!best) return r;
+    const bt = _tsMillis(best), rt = _tsMillis(r);
+    if(rt !== bt) return rt > bt ? r : best;
+    return (r.quantity || 0) > (best.quantity || 0) ? r : best;
+  }, null);
+}
+// 統合プランを組み立てる(クラウドの実データを読んで合計を計算。書き込みはまだしない)
+async function buildDuplicateMergePlan(){
+  // アクティブな商品を名前でグループ化(重複=同名で2件以上)
+  const byName = {};
+  ITEMS.forEach(it => {
+    if(it.isActive === false) return;
+    const n = (it.name || '').trim();
+    if(!n) return;
+    (byName[n] = byName[n] || []).push(it);
+  });
+  const groups = Object.keys(byName).filter(n => byName[n].length >= 2).map(n => byName[n]);
+  if(!groups.length) return [];
+
+  // クラウドの在庫を取得(店舗 / アパート)
+  const [sRes, aRes] = await Promise.all([
+    supabaseClient.from('store_inventory').select('*'),
+    supabaseClient.from('apartment_inventory').select('*')
+  ]);
+  if(sRes.error) throw sRes.error;
+  if(aRes.error) throw aRes.error;
+  const storeData = sRes.data || [];
+  const aptData = aRes.data || [];
+
+  return groups.map(arr => {
+    const ids = arr.map(it => String(it.id));
+    // 各 item_id × store_code の代表値を選び、店舗別に合算
+    const byIdStore = {};
+    storeData.forEach(r => {
+      if(!ids.includes(String(r.item_id))) return;
+      const k = String(r.item_id) + '__' + r.store_code;
+      (byIdStore[k] = byIdStore[k] || []).push(r);
+    });
+    const storeSums = {};
+    Object.keys(byIdStore).forEach(k => {
+      const rep = _pickRep(byIdStore[k]);
+      storeSums[rep.store_code] = (storeSums[rep.store_code] || 0) + (rep.quantity || 0);
+    });
+    // アパートは item_id ごとに代表値を選んで合算
+    const byIdApt = {};
+    aptData.forEach(r => {
+      if(!ids.includes(String(r.item_id))) return;
+      (byIdApt[String(r.item_id)] = byIdApt[String(r.item_id)] || []).push(r);
+    });
+    let aptSum = 0;
+    Object.keys(byIdApt).forEach(id => { aptSum += (_pickRep(byIdApt[id]).quantity || 0); });
+
+    // 残す商品(正規)を選定: 店舗紐付け数 > 在庫あり > 仕入URLあり、同点はID文字列順
+    const scored = arr.map(it => {
+      const sId = String(it.id);
+      const stk = Object.keys(byIdStore).filter(k => k.startsWith(sId + '__'))
+                    .reduce((x, k) => x + (_pickRep(byIdStore[k]).quantity || 0), 0)
+                + (byIdApt[sId] ? (_pickRep(byIdApt[sId]).quantity || 0) : 0);
+      const score = (it.stores ? it.stores.length : 0) * 10 + (stk > 0 ? 5 : 0) + (it.supplierUrl ? 2 : 0);
+      return { it, score };
+    }).sort((a, b) => b.score - a.score || String(a.it.id).localeCompare(String(b.it.id)));
+    const canonical = scored[0].it;
+    const canonicalId = String(canonical.id);
+
+    // 店舗コードの集合(在庫がある店 + 正規商品の紐付け店)
+    const storeCodes = new Set(Object.keys(storeSums));
+    (canonical.stores || []).forEach(sn => { if(STORE_CODE_MAP[sn]) storeCodes.add(STORE_CODE_MAP[sn]); });
+
+    return {
+      name: canonical.name,
+      unit: canonical.unit || '',
+      recordCount: arr.length,
+      canonicalId,
+      dupIds: ids.filter(id => id !== canonicalId),
+      storeSums,
+      aptSum,
+      storeCodes: [...storeCodes]
+    };
+  });
+}
+// 「重複した商品をまとめる」ボタンの本体
+async function mergeDuplicateItems(){
+  if(mergeDupInFlight) return;
+  if(!isCloudReady() || !currentAuthUser){
+    alert('先に設定画面で Firebase にログインしてから実行してください。');
+    return;
+  }
+  const user = ensureActionUser();
+  if(!user) return;
+
+  let plan;
+  try{
+    plan = await buildDuplicateMergePlan();
+  }catch(err){
+    console.error(err);
+    alert('重複の確認に失敗しました: ' + cloudErrorMessage(err, 'データの取得に失敗しました'));
+    return;
+  }
+  if(!plan.length){
+    alert('重複している商品は見つかりませんでした。');
+    return;
+  }
+
+  // 実行前の確認(まとめ後の数字を提示)
+  const lines = plan.map(p => {
+    const storeStr = p.storeCodes
+      .map(code => `${STORE_NAME_MAP[code] || code} ${p.storeSums[code] || 0}${p.unit}`)
+      .join(' / ') || '在庫なし';
+    return `・${p.name}(${p.recordCount}件 → 1件)\n    店舗: ${storeStr}\n    アパート: ${p.aptSum}${p.unit}`;
+  }).join('\n');
+  const ok = window.confirm(
+    '次の重複商品を1つにまとめます。\n在庫は合計され、減りません。まとめた重複側は無効化(あとで復元可能)します。\n\n'
+    + lines
+    + '\n\n実行してよろしいですか?'
+  );
+  if(!ok) return;
+
+  mergeDupInFlight = true;
+  toast('重複をまとめています…');
+  try{
+    for(const p of plan){
+      // 1) 正規IDに「合算した在庫」を書き込む(店舗別 + アパート)
+      for(const code of p.storeCodes){
+        await supabaseClient.from('store_inventory').upsert({
+          id: `${p.canonicalId}_${code}`, item_id: p.canonicalId, store_code: code,
+          quantity: p.storeSums[code] || 0, updated_by: currentAuthUser.id
+        }, { onConflict: 'item_id,store_code' });
+        await supabaseClient.from('item_store_targets').upsert({
+          item_id: p.canonicalId, store_code: code, is_enabled: true
+        }, { onConflict: 'item_id,store_code' });
+      }
+      await supabaseClient.from('apartment_inventory').upsert({
+        id: String(p.canonicalId), item_id: p.canonicalId, quantity: p.aptSum, updated_by: currentAuthUser.id
+      }, { onConflict: 'item_id' });
+
+      // 2) 重複側の在庫・紐付けを削除し、商品を無効化(復元可能)
+      for(const dup of p.dupIds){
+        await supabaseClient.from('store_inventory').delete().eq('item_id', dup);
+        await supabaseClient.from('apartment_inventory').delete().eq('item_id', dup);
+        await supabaseClient.from('item_store_targets').delete().eq('item_id', dup);
+        await supabaseClient.from('items').update({ is_active: false }).eq('id', dup);
+      }
+      addLog({
+        type: '重複統合', scope: p.name, itemName: p.name, user,
+        message: `${p.recordCount}件を1件に統合(店舗/アパート在庫を合算、重複${p.dupIds.length}件を無効化)`
+      });
+    }
+    await reloadAllFromSupabase();
+    if(document.getElementById('view-store').style.display !== 'none') renderStore();
+    if(document.getElementById('view-apt').style.display !== 'none') renderApt();
+    renderDashboard();
+    toast(`✅ ${plan.length}件の重複商品をまとめました`);
+  }catch(err){
+    console.error(err);
+    alert('統合の途中でエラーが発生しました。もう一度実行せず、状況をお知らせください。\n\n'
+      + cloudErrorMessage(err, '統合に失敗しました'));
+  }finally{
+    mergeDupInFlight = false;
+  }
+}
+
 let ITEMS = load('inv_items_v3', DEFAULT_ITEMS).map(normalizeStoreItem);
 let storeStock = load('inv_store_v3', DEFAULT_STORE);
 let aptStock = load('inv_apt_v3', DEFAULT_APT).map(normalizeAptItem);

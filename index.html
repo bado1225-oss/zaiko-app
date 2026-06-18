@@ -11,17 +11,17 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260618a">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260618a">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260618a">
-<link rel="manifest" href="manifest.webmanifest?v=20260618a">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260618b">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260618b">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260618b">
+<link rel="manifest" href="manifest.webmanifest?v=20260618b">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260618a">
+<link rel="stylesheet" href="src/style.css?v=20260618b">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<script src="src/firebase-adapter.js?v=20260618a"></script>
+<script src="src/firebase-adapter.js?v=20260618b"></script>
 </head>
 <body>
 <div class="app">
@@ -40,7 +40,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="トップへ">
-    <img src="icons/icon-512.png?v=20260618a" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260618b" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -268,6 +268,16 @@
         <div style="margin-top:16px">
           <button class="modal-submit" onclick="connectFirebase()">🔥 Firebase に接続する</button>
         </div>
+      </div>
+      <div style="height:1px;background:var(--line);margin:0 16px"></div>
+      <div style="padding:16px 16px 16px">
+        <div style="font-size:1.05em;font-weight:700;margin-bottom:6px">🧹 重複した商品をまとめる</div>
+        <div style="color:#666;font-size:0.88em;margin-bottom:14px">
+          同じ名前の商品が2つに分かれてしまい、補充しても在庫が変わらないときに使います。<br>
+          分かれた在庫を<strong>合計して1つにまとめます（在庫は減りません）</strong>。実行する前に、まとめ後の数字を確認できます。<br>
+          ※ Firebase にログインした状態で実行してください。
+        </div>
+        <button class="modal-copy" onclick="mergeDuplicateItems()">🧹 重複した商品をまとめる</button>
       </div>
       <div style="height:1px;background:var(--line);margin:0 16px"></div>
       <div style="padding:16px 16px 32px">
@@ -512,6 +522,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260618a"></script>
+<script src="src/main.js?v=20260618b"></script>
 </body>
 </html>
