@@ -663,11 +663,22 @@ async function reloadAllFromSupabase(){
       .catch(e => console.warn('dup target cleanup:', e));
   }
 
+  // 名前→ID は「有効(is_active)な記録」を優先(無効な重複IDで上書きしない)。
+  // これをしないと、重複をまとめた後に残る無効な記録のIDを掴み、補充/入力が空振りする。
+  const _nameHasActiveId = {};
   ITEMS = (itemsRes.data || []).map(row => {
-    itemIdByName[row.name] = row.id;
     itemNameById[row.id] = row.name;
+    const _isAct = row.is_active !== false;
+    if(_isAct){
+      if(!_nameHasActiveId[row.name]){ itemIdByName[row.name] = row.id; _nameHasActiveId[row.name] = true; }
+    }else if(itemIdByName[row.name] === undefined){
+      itemIdByName[row.name] = row.id;
+    }
     return mapItemRow(row, targetMap[row.id] || [], thresholdMap[row.id] || {}, locationMap[row.id] || {});
   });
+  // 同名で「有効な記録」を先頭へ。ITEMS.find(name) が常に有効な記録を返すようにする
+  // (表示順は filteredStoreItems→sortItems が別途並べ替えるため影響なし)
+  ITEMS.sort((a, b) => (a.isActive === false ? 1 : 0) - (b.isActive === false ? 1 : 0));
 
   storeStock = {};
   ITEMS.forEach(item => {
