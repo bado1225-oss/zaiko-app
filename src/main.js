@@ -3931,10 +3931,14 @@ async function deleteItem(){
   if(mode === 'store'){
     if(!confirm(`「${editName}」を削除しますか？`)) return;
     const targetName = editName;
-    const idx = ITEMS.findIndex(i => i.name === targetName);
-    // splice 前に items の ID を確保(itemIdByName 欠落時のフォールバック)
-    const _removedItem = idx >= 0 ? ITEMS[idx] : null;
-    if(idx >= 0) ITEMS.splice(idx,1);
+    // 同名の「全レコードID」を集める(重複IDの取りこぼし=削除しても1件残る、を防ぐ)
+    const _sameNameIds = [...new Set(
+      ITEMS.filter(i => i.name === targetName)
+        .map(i => i.id != null ? String(i.id) : (i.itemId != null ? String(i.itemId) : null))
+        .concat(itemIdByName[targetName] != null ? [String(itemIdByName[targetName])] : [])
+    )].filter(Boolean);
+    // ローカルからは同名レコードをすべて除去
+    ITEMS = ITEMS.filter(i => i.name !== targetName);
     delete storeStock[targetName];
     ['店舗不足', 'アパート発注'].forEach(scope => {
       delete orderChecks[orderCheckKey(scope, targetName)];
@@ -3945,24 +3949,25 @@ async function deleteItem(){
       delete shoppingQtyOverrides[k];
     });
     persist('inv_order_checks_v1', orderChecks);
-    const _deletedItemId = itemIdByName[targetName] || _removedItem?.id || _removedItem?.itemId || null;
     persist('inv_items_v3', ITEMS, null);
     persist('inv_store_v3', storeStock, 'inv_store_ts_v3');
-    if(isCloudReady() && _deletedItemId){
+    if(isCloudReady() && _sameNameIds.length){
       try{
-        // 店舗関連レコードを削除(orphan化を防ぐ)
-        await supabaseClient.from('item_store_targets').delete().eq('item_id', _deletedItemId);
-        await supabaseClient.from('store_inventory').delete().eq('item_id', _deletedItemId);
-        // アパート側に同名品目が無ければ items マスタも完全削除
+        // アパート側に同名品目が残るなら items マスタは無効化しない(アパート品を守る)
         const aptStillHas = aptStock.some(a => a.name === targetName);
-        if(!aptStillHas){
-          await supabaseClient.from('apartment_inventory').delete().eq('item_id', _deletedItemId);
-          await supabaseClient.from('items').update({is_active:false}).eq('id', _deletedItemId);
+        // 同名の全IDについて店舗関連レコードを削除(orphan/重複の取り残しを防ぐ)
+        for(const _id of _sameNameIds){
+          await supabaseClient.from('item_store_targets').delete().eq('item_id', _id);
+          await supabaseClient.from('store_inventory').delete().eq('item_id', _id);
+          if(!aptStillHas){
+            await supabaseClient.from('apartment_inventory').delete().eq('item_id', _id);
+            await supabaseClient.from('items').update({is_active:false}).eq('id', _id);
+          }
         }
       }catch(err){ console.error('cloud delete:', err); toast('クラウド反映に失敗しました'); }
     }
     if(!aptStock.some(a => a.name === targetName)) delete itemIdByName[targetName];
-    addLog({type:'削除', scope:'店舗マスタ', itemName:targetName, user, message:'品目を削除'});
+    addLog({type:'削除', scope:'店舗マスタ', itemName:targetName, user, message:`品目を削除(同名${_sameNameIds.length}件)`});
     setLastSaved('store','inv_store_ts_v3');
     closeModal();
     renderStore(); renderApt(); renderLogs(); renderDashboard();
