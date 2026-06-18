@@ -673,7 +673,24 @@ async function reloadAllFromSupabase(){
   ITEMS.forEach(item => {
     storeStock[item.name] = {'神楽坂': null, '男マエ食道': null};
   });
+  // 同じ (item_id, store_code) に store_inventory が複数あるとき、代表を1件だけ採用する。
+  // 補充RPCは正規ID `item_id_store_code` を最新 updated_at で更新するため、
+  // 「最新 updated_at → 正規ID → 数量大」の優先で選ぶ。
+  // (これをせず last-wins にすると、古い重複行が補充結果を上書きして「店舗が増えない」事故になる)
+  const _storeRepByKey = {};
   (storeRes.data || []).forEach(r => {
+    const key = String(r.item_id) + '__' + r.store_code;
+    const prev = _storeRepByKey[key];
+    if(!prev){ _storeRepByKey[key] = r; return; }
+    const rt = _tsMillis(r), pt = _tsMillis(prev);
+    if(rt !== pt){ if(rt > pt) _storeRepByKey[key] = r; return; }
+    const canonId = String(r.item_id) + '_' + r.store_code;
+    const rCanon = String(r.id) === canonId, pCanon = String(prev.id) === canonId;
+    if(rCanon !== pCanon){ if(rCanon) _storeRepByKey[key] = r; return; }
+    if((r.quantity || 0) > (prev.quantity || 0)) _storeRepByKey[key] = r;
+  });
+  Object.keys(_storeRepByKey).forEach(key => {
+    const r = _storeRepByKey[key];
     const name = itemNameById[r.item_id];
     const storeName = STORE_NAME_MAP[r.store_code];
     if(name && storeName){
@@ -879,6 +896,7 @@ async function cloudReplaceStoreTargets(item){
   for(const s of item.stores){
     const qty = storeStock[item.name]?.[s] ?? 0;
     const { error } = await supabaseClient.from('store_inventory').upsert({
+      id: `${item.id}_${STORE_CODE_MAP[s]}`,
       item_id:item.id, store_code:STORE_CODE_MAP[s], quantity:qty, updated_by:currentAuthUser.id
     }, { onConflict: 'item_id,store_code' });
     if(error) throw error;
@@ -905,7 +923,9 @@ async function cloudUpsertStoreQuantity(itemName, storeName, qty){
     itemId = await cloudUpdateItem(item, 'upsert');
   }
   await cloudEnsureStoreTarget(itemId, storeName);
+  // 正規ID `item_id_store_code` で上書き(補充RPCと同じDocを更新し、重複Docを作らない)
   const { error } = await supabaseClient.from('store_inventory').upsert({
+    id: `${itemId}_${STORE_CODE_MAP[storeName]}`,
     item_id:itemId,
     store_code:STORE_CODE_MAP[storeName],
     quantity:qty,
