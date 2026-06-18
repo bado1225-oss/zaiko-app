@@ -1763,6 +1763,7 @@ function productHasUrl(name){
 // 店頭購入が必要な商品(supplierUrl 未設定で不足している品目)
 // renderShopping と同一ロジックで判定し、ダッシュボードカウントと表示件数が必ず一致するようにする
 function getShoppingLists(){
+  const _activeNameSet = new Set(activeItems().map(i => i.name)); // 削除済み/幽霊を除外する用
   const storeItems = activeItems().filter(item => {
     const key = item.name + '|店舗';
     if(!(item.stores && item.stores.length)) return false; // 店舗の紐付けが無い(削除残骸/アパート専用)は対象外
@@ -1772,13 +1773,23 @@ function getShoppingLists(){
   });
   const aptItems = aptStock.filter(item => {
     const key = item.name + '|アパート';
+    if(!_activeNameSet.has(item.name)) return false; // 削除済み商品/幽霊在庫は出さない
     if(productHasUrl(item.name)) return false;
     if(!(item.min > 0)) return false; // 最低在庫が0なら買い物アラーム出さない
     return item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
   });
   const aptNames = new Set(aptItems.map(i => i.name));
-  const storeOnly = storeItems.filter(i => !aptNames.has(i.name));
-  return { aptItems, storeOnly, allItems: aptItems.concat(storeOnly) };
+  // アパートに在庫がある品は「補充で賄える」ので店頭購入には出さない(+アパートが不足分はaptItems側で出す)
+  const storeOnly = storeItems.filter(i =>
+    !((findAptItem(i.name)?.stock ?? 0) > 0) && !aptNames.has(i.name));
+  // 同名の重複エントリを1つにまとめる
+  const _seen = new Set();
+  const allItems = aptItems.concat(storeOnly).filter(i => {
+    if(_seen.has(i.name)) return false;
+    _seen.add(i.name);
+    return true;
+  });
+  return { aptItems, storeOnly, allItems };
 }
 function dashboardStats(){
   // 補充必要は店舗別の不足ロジックに統一(min=0 stock=0 の品目を誤判定しない)
@@ -4068,6 +4079,7 @@ async function executeTransferConfirm(){
 }
 
 function renderShopping(){
+  var _activeNameSet = new Set(activeItems().map(function(i){ return i.name; })); // 削除済み/幽霊を除外する用
   var storeItems = activeItems()
     .filter(function(item){
       var key = item.name + '|店舗';
@@ -4088,6 +4100,7 @@ function renderShopping(){
   var aptItems = aptStock
     .filter(function(item){
       var key = item.name + '|アパート';
+      if(!_activeNameSet.has(item.name)) return false; // 削除済み商品/幽霊在庫は出さない
       if(productHasUrl(item.name)) return false;
       if(!(item.min > 0)) return false;
       return item.stock <= item.min && !item.supplierUrl && !shoppingPurchased[key];
@@ -4100,10 +4113,18 @@ function renderShopping(){
                supplier:item.supplier||'仕入れ先未設定',
                qty:qty, scope:'アパート', hasApt:true };
     });
-  // 重複排除: 同じ商品名がアパート側にも存在する場合、店舗エントリを除外
+  // アパートに在庫がある品は「補充で賄える」ので店頭購入から除外し、不足分はアパート側エントリで出す
   var aptNames = new Set(aptItems.map(function(i){ return i.name; }));
-  var storeOnlyItems = storeItems.filter(function(i){ return !aptNames.has(i.name); });
-  var allItems = aptItems.concat(storeOnlyItems);
+  var storeOnlyItems = storeItems.filter(function(i){
+    return !((findAptItem(i.name) || {}).stock > 0) && !aptNames.has(i.name);
+  });
+  // 同名の重複エントリを1つにまとめる
+  var _seen = new Set();
+  var allItems = aptItems.concat(storeOnlyItems).filter(function(i){
+    if(_seen.has(i.name)) return false;
+    _seen.add(i.name);
+    return true;
+  });
   var pill = document.getElementById('shopping-count-pill');
   if(pill) pill.textContent = allItems.length + '件';
   var container = document.getElementById('shopping-items');
