@@ -669,6 +669,33 @@ async function reloadAllFromSupabase(){
     return mapItemRow(row, targetMap[row.id] || [], thresholdMap[row.id] || {}, locationMap[row.id] || {});
   });
 
+  // 同名 items の重複を1つに統合(再登録などで2重になったマスタを表示上まとめる)
+  const _canonicalIdByName = {};
+  (() => {
+    const byName = {};
+    ITEMS.forEach(it => { (byName[it.name] = byName[it.name] || []).push(it); });
+    const merged = [];
+    Object.keys(byName).forEach(name => {
+      const arr = byName[name];
+      // 優先: アクティブ かつ 店舗紐付きあり → 店舗数が多い → 先頭
+      arr.sort((a,b) => {
+        const aw = (a.isActive!==false?2:0) + ((a.stores||[]).length>0?1:0);
+        const bw = (b.isActive!==false?2:0) + ((b.stores||[]).length>0?1:0);
+        return bw - aw || (b.stores||[]).length - (a.stores||[]).length;
+      });
+      const keep = arr[0];
+      _canonicalIdByName[name] = keep.id;
+      // 統合: 他の重複の店舗紐付け/しきい値/場所をキープ側に補完
+      arr.slice(1).forEach(d => {
+        (d.stores||[]).forEach(s => { if(!keep.stores.includes(s)) keep.stores.push(s); });
+      });
+      merged.push(keep);
+    });
+    ITEMS = merged;
+    // itemIdByName をキープ側の id に統一
+    Object.keys(_canonicalIdByName).forEach(name => { itemIdByName[name] = _canonicalIdByName[name]; });
+  })();
+
   storeStock = {};
   ITEMS.forEach(item => {
     storeStock[item.name] = {'神楽坂': null, '男マエ食道': null};
@@ -742,6 +769,25 @@ async function reloadAllFromSupabase(){
       orderQty: ref.orderQty ?? null
     });
   }).filter(Boolean);
+
+  // アパートも同名の重複を1つに統合(在庫が多い方を採用し、参照IDをキープ側の items に統一)
+  (() => {
+    const byName = {};
+    aptStock.forEach(a => { (byName[a.name] = byName[a.name] || []).push(a); });
+    aptStock = Object.keys(byName).map(name => {
+      const arr = byName[name];
+      if(arr.length === 1){
+        // 参照IDを統合済みの canonical items に合わせる
+        if(_canonicalIdByName[name]) arr[0].itemId = _canonicalIdByName[name];
+        return arr[0];
+      }
+      arr.sort((a,b) => (b.stock||0) - (a.stock||0));  // 在庫が多い方を残す
+      const keep = arr[0];
+      if(_canonicalIdByName[name]) keep.itemId = _canonicalIdByName[name];
+      console.warn('[apt dup name] 同名のアパート在庫を統合:', name, arr.map(x=>x.stock));
+      return keep;
+    });
+  })();
 
   orderChecks = {};
   (orderRes.data || []).forEach(r => {
