@@ -2118,23 +2118,43 @@ function renderStore(){
     return;
   }
   // 店舗フィルタを先に適用してからカテゴリ別にグループ化
-  let filtered, focusStore;
+  let filtered, focusStore, scopeAll;
   if(storeViewFilter === 'all'){
+    scopeAll = list.filter(item => item.stores.length > 0);
     filtered = list.filter(item => item.stores.some(s => passStoreCheckVisibility(item.name, s)));
     focusStore = null;
   }else{
+    scopeAll = list.filter(item => item.stores.includes(storeViewFilter));
     filtered = list.filter(item => item.stores.includes(storeViewFilter) && passStoreCheckVisibility(item.name, storeViewFilter));
     focusStore = storeViewFilter;
   }
   document.getElementById('store-count-pill').textContent = filtered.length + '件';
-  // 単一店舗表示は保管場所でグループ化。すべて表示はカテゴリでグループ化
-  if(focusStore){
-    c.innerHTML = renderItemsByLocation(filtered, focusStore, item => renderStoreCard(item, focusStore));
-  }else{
-    c.innerHTML = renderItemsByCategory(filtered, item => renderStoreCard(item, focusStore));
+  // 「未チェックのみ」で確認済み商品が隠れている場合のヒント(データ消失ではないことを明示)
+  const visibility = document.getElementById('filter-check-visibility')?.value || 'unchecked';
+  let hiddenHint = '';
+  if(visibility === 'unchecked'){
+    const hiddenCount = scopeAll.length - filtered.length;
+    if(hiddenCount > 0){
+      hiddenHint = `<div class="checked-hidden-hint" onclick="showAllChecked()">✅ 確認済み <strong>${hiddenCount}件</strong> を非表示中(タップで表示)</div>`;
+    }
   }
+  // 単一店舗表示は保管場所でグループ化。すべて表示はカテゴリでグループ化
+  let body;
+  if(focusStore){
+    body = renderItemsByLocation(filtered, focusStore, item => renderStoreCard(item, focusStore));
+  }else{
+    body = renderItemsByCategory(filtered, item => renderStoreCard(item, focusStore));
+  }
+  c.innerHTML = hiddenHint + body;
   bindEditButtons();
   renderAllTransferQtyControls();
+}
+// 確認済み非表示ヒントをタップ → 「すべて」表示に切り替え
+function showAllChecked(){
+  const visEl = document.getElementById('filter-check-visibility');
+  if(visEl){ visEl.value = 'all'; }
+  renderStore();
+  updateActiveFilterBanner('store');
 }
 // 単一店舗で、保管場所ごとにグループ化して描画する
 function renderItemsByLocation(items, store, renderItem){
