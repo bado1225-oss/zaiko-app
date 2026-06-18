@@ -700,14 +700,20 @@ async function reloadAllFromSupabase(){
     if(rCanon !== pCanon){ if(rCanon) _storeRepByKey[key] = r; return; }
     if((r.quantity || 0) > (prev.quantity || 0)) _storeRepByKey[key] = r;
   });
+  // name+store ごとに「正規item_id(=補充の書き込み先 itemIdByName[name])の値」を最優先で採用する。
+  // 同名・別item_idの記録が2件とも有効でも、補充が書き込む正規IDの値で表示するため、
+  // 重複をまとめる前でも補充がそのまま店舗在庫に反映される。
+  const _storeCanonLock = {};
   Object.keys(_storeRepByKey).forEach(key => {
     const r = _storeRepByKey[key];
     const name = itemNameById[r.item_id];
     const storeName = STORE_NAME_MAP[r.store_code];
-    if(name && storeName){
-      if(!storeStock[name]) storeStock[name] = {'神楽坂': null, '男マエ食道': null};
-      storeStock[name][storeName] = r.quantity;
-    }
+    if(!name || !storeName) return;
+    if(!storeStock[name]) storeStock[name] = {'神楽坂': null, '男マエ食道': null};
+    const lockKey = name + '__' + storeName;
+    if(_storeCanonLock[lockKey]) return;   // 正規item_idの値で確定済み → 上書きしない
+    storeStock[name][storeName] = r.quantity;
+    if(String(r.item_id) === String(itemIdByName[name])) _storeCanonLock[lockKey] = true;
   });
 
   // 同じ item_id の apartment_inventory が複数ある場合は1件に正規化
