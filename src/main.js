@@ -274,7 +274,7 @@ function inferCategory(name,current){
   return CATEGORY_OPTIONS[0] || 'その他';
 }
 function normalizeStoreItem(item){
-  return {
+  const out = {
     category: inferCategory(item.name, item.category),
     target: item.target ?? ((item.min || 0) * 2 || 1),
     supplier: item.supplier || '',
@@ -286,6 +286,9 @@ function normalizeStoreItem(item){
     ...item,
     name: (item.name || '').trim(),  // normalize whitespace
   };
+  // 店舗の重複を除去(item_store_targets の重複行などで二重になるのを防ぐ)
+  out.stores = [...new Set(out.stores || [])];
+  return out;
 }
 // 店舗別の最低在庫(未設定ならグローバル min を店舗数で割った値にフォールバック)
 function getStoreMin(item, store){
@@ -631,10 +634,16 @@ async function reloadAllFromSupabase(){
   const targetMap = {};
   const thresholdMap = {};
   const locationMap = {};
+  const _seenTargetKey = new Set();
+  const _dupTargetIds = [];   // 重複した item_store_targets の行ID(後でクラウドから削除)
   (targetsRes.data || []).forEach(t => {
     const name = STORE_NAME_MAP[t.store_code];
+    // 同一 (item_id, store_code) が複数ある場合、2件目以降は重複としてマーク
+    const key = `${t.item_id}__${t.store_code}`;
+    if(_seenTargetKey.has(key)){ if(t.id != null) _dupTargetIds.push(t.id); return; }
+    _seenTargetKey.add(key);
     if(!targetMap[t.item_id]) targetMap[t.item_id] = [];
-    if(name) targetMap[t.item_id].push(name);
+    if(name && !targetMap[t.item_id].includes(name)) targetMap[t.item_id].push(name);
     if(name && (t.min_stock != null || t.max_stock != null)){
       if(!thresholdMap[t.item_id]) thresholdMap[t.item_id] = {};
       const entry = {};
@@ -647,6 +656,12 @@ async function reloadAllFromSupabase(){
       locationMap[t.item_id][name] = t.location;
     }
   });
+  // 重複した item_store_targets 行をクラウドから自動削除(失敗してもアプリは動作)
+  if(_dupTargetIds.length){
+    supabaseClient.from('item_store_targets').delete().in('id', _dupTargetIds)
+      .then(() => console.log('removed dup targets:', _dupTargetIds.length))
+      .catch(e => console.warn('dup target cleanup:', e));
+  }
 
   ITEMS = (itemsRes.data || []).map(row => {
     itemIdByName[row.name] = row.id;
@@ -1141,7 +1156,8 @@ function setTransferQtyValue(itemName, storeName, value){
   transferDraftQty[getTransferKey(itemName, storeName)] = normalized;
 }
 function getTransferPlan(item, transfer){
-  return item.stores.map(storeName => ({
+  // 店舗の重複を除去してから配分を組む(二重計上を防止)
+  return [...new Set(item.stores)].map(storeName => ({
     storeName,
     shortage: getStoreShortage(item, storeName),
     qty: getSelectedTransferQty(item, transfer, storeName)
