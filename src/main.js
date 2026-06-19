@@ -887,8 +887,10 @@ async function cloudUpdateItem(item, mode='upsert'){
   // min/target は明示指定された場合のみ items テーブルに反映(アパート編集時は未指定にして店舗値を保持)
   if(item.min !== undefined && item.min !== null)    payload.min_stock    = item.min;
   if(item.target !== undefined && item.target !== null) payload.target_stock = item.target;
-  const { data, error } = await supabaseClient.from('items').upsert(payload).select().single();
+  // Firebaseアダプターでは upsert を await すると {data,error} が返る(.select()/.single() は不要・未対応)
+  const { data, error } = await supabaseClient.from('items').upsert(payload);
   if(error) throw error;
+  if(!data || data.id == null) throw new Error('商品の保存結果を取得できませんでした');
   item.id = data.id;
   itemIdByName[item.name] = data.id;
   itemNameById[data.id] = item.name;
