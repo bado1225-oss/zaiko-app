@@ -1302,6 +1302,10 @@ function getStoreShortage(item, storeName){
   if(storeMin <= 0) return 0;
   return Math.max(0, storeMin - current);
 }
+// すべて表示のカード見出し用: いずれかの店舗が最低在庫を下回っていれば要補充
+function anyStoreShort(item){
+  return (item.stores || []).some(s => getStoreShortage(item, s) > 0);
+}
 // 補充入力の上限(店舗別 max が設定されていれば max-current で頭打ち)
 function getStoreRefillCap(item, storeName){
   const current = storeStock[item.name]?.[storeName] ?? 0;
@@ -1562,7 +1566,11 @@ function updateStoreCardUI(name){
     if(badgeEl){ badgeEl.textContent = badgeTextFromQtyClass(cls); badgeEl.className = badgeClassFromQtyClass(cls); }
   }else{
     if(totalEl){ totalEl.textContent = total; totalEl.className = `total-strong ${statusClassForTotal(total,item.min)}`; }
-    if(badgeEl){ badgeEl.textContent = getStatusText(total,item.min); badgeEl.className = statusBadgeClass(total,item.min); }
+    if(badgeEl){
+      const _short = anyStoreShort(item);
+      badgeEl.textContent = _short ? '🔴 要補充' : getStatusText(total,item.min);
+      badgeEl.className   = _short ? 'badge badge-danger' : statusBadgeClass(total,item.min);
+    }
   }
   if(usageEl) usageEl.textContent = usage;
   STORES.forEach(storeName => {
@@ -1573,7 +1581,7 @@ function updateStoreCardUI(name){
       if(item.stores.includes(storeName)) qtyEl.className = `qty-val tappable ${storeQtyStatusClass(sv, item, storeName)}`;
     }
   });
-  card.className = `item-card ${statusClassForCard(total,item.min)}`;
+  card.className = `item-card ${anyStoreShort(item) ? 'danger' : statusClassForCard(total,item.min)}`;
   if(transferEl) transferEl.innerHTML = getTransferBoxHtml(item);
   item.stores.forEach(storeName => renderTransferQtyControl(item.name, storeName));
 }
@@ -2213,7 +2221,8 @@ function storeQtyStatusClass(v, item, store){
     const max = getStoreMax(item, store);
     if(max != null && v >= max) return 'qty-excess';
     const min = getStoreMin(item, store);
-    if(v <= min) return 'qty-warning';
+    // その店の最低在庫を下回ったら要補充(0になる前に。ダッシュボードの補充必要件数と同基準)
+    if(min > 0 && v < min) return 'qty-danger';
     return 'qty-ok';
   }
   // 後方互換: storeが渡されない古い呼び出し
@@ -2226,7 +2235,8 @@ function getStoreStatusText(v, item, store){
   const max = getStoreMax(item, store);
   if(max != null && v >= max) return '🔵 過剰';
   const min = getStoreMin(item, store);
-  if(v <= min) return '🟡 要注意';
+  // その店の最低在庫を下回ったら要補充(0になる前に)
+  if(min > 0 && v < min) return '🔴 要補充';
   return '🟢 正常';
 }
 function badgeClassFromQtyClass(qtyClass){
@@ -2297,7 +2307,7 @@ function renderStoreCard(item, focusStoreName=null){
       return `<span class="store-cell"><span class="store-cell-name">${s}</span><span class="store-cell-qty ${cls}">${v}<small>${item.unit}</small></span></span>`;
     })
     .join('');
-  return `<div class="item-card ${statusClassForCard(total,item.min)}" id="${eid(item.name,'card')}">
+  return `<div class="item-card ${anyStoreShort(item) ? 'danger' : statusClassForCard(total,item.min)}" id="${eid(item.name,'card')}">
     <div class="card-header">
       <div class="item-title-wrap">
         <div class="item-name">${escapeHtml(item.name)}</div>
@@ -2326,7 +2336,7 @@ function renderStoreCard(item, focusStoreName=null){
         </div>`;
       }
       return `<div class="status-row">
-        <span class="${statusBadgeClass(total,item.min)}" id="BAD_${eid(item.name,'')}">${getStatusText(total,item.min)}</span>
+        <span class="${anyStoreShort(item) ? 'badge badge-danger' : statusBadgeClass(total,item.min)}" id="BAD_${eid(item.name,'')}">${anyStoreShort(item) ? '🔴 要補充' : getStatusText(total,item.min)}</span>
         <span class="total-label">合計 <span class="total-strong ${statusClassForTotal(total,item.min)}" id="TOT_${eid(item.name,'')}">${total}</span> ${item.unit}</span>
       </div>`;
     })()}
