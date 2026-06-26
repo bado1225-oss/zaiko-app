@@ -1302,9 +1302,21 @@ function getStoreShortage(item, storeName){
   if(storeMin <= 0) return 0;
   return Math.max(0, storeMin - current);
 }
-// すべて表示のカード見出し用: いずれかの店舗が最低在庫を下回っていれば要補充
+// 「要補充サイン」を出す唯一の基準(サイン・カード見出し・補充一覧・件数で共用し、必ず一致させる)
+// 在庫0、または その店の最低在庫を下回ったら要補充
+function isStoreRefillNeeded(v, item, store){
+  if(v <= 0) return true;
+  const min = getStoreMin(item, store);
+  return min > 0 && v < min;
+}
+function storeNeedsRefill(item, store){
+  if(!item.stores.includes(store)) return false;
+  const v = storeStock[item.name]?.[store] ?? 0;
+  return isStoreRefillNeeded(v, item, store);
+}
+// いずれかの店舗で要補充サインが出ているか(すべて表示のカード見出し・補充一覧で共用)
 function anyStoreShort(item){
-  return (item.stores || []).some(s => getStoreShortage(item, s) > 0);
+  return (item.stores || []).some(s => storeNeedsRefill(item, s));
 }
 // 補充入力の上限(店舗別 max が設定されていれば max-current で頭打ち)
 function getStoreRefillCap(item, storeName){
@@ -1802,8 +1814,8 @@ function getShoppingLists(){
   return { aptItems, storeOnly, allItems };
 }
 function dashboardStats(){
-  // 補充必要は店舗別の不足ロジックに統一(min=0 stock=0 の品目を誤判定しない)
-  const storeIssues = new Set(activeItems().filter(item => item.stores.some(s => getStoreShortage(item, s) > 0)).map(i => i.name));
+  // 補充必要 = 要補充サインが出ている商品(サイン・補充一覧と完全一致)
+  const storeIssues = new Set(activeItems().filter(itemNeedsRefill).map(i => i.name));
   // 品目数: 店舗に紐付くアクティブ品 + アパート在庫。削除済み・幽霊(stores空でapt無し)は数えない
   const allNames = new Set([
     ...activeItems().filter(i => (i.stores || []).length > 0).map(i => i.name),
@@ -2216,15 +2228,16 @@ function statusClassForTotal(current,min){
   return 'total-ok';
 }
 function storeQtyStatusClass(v, item, store){
-  if(v <= 0) return 'qty-danger';
   if(store){
-    const max = getStoreMax(item, store);
-    if(max != null && v >= max) return 'qty-excess';
-    const min = getStoreMin(item, store);
-    // その店の最低在庫を下回ったら要補充(0になる前に。ダッシュボードの補充必要件数と同基準)
-    if(min > 0 && v < min) return 'qty-danger';
+    if(v > 0){
+      const max = getStoreMax(item, store);
+      if(max != null && v >= max) return 'qty-excess';
+    }
+    // 在庫0 または 最低在庫を下回ったら要補充(補充一覧・件数と同じ単一基準)
+    if(isStoreRefillNeeded(v, item, store)) return 'qty-danger';
     return 'qty-ok';
   }
+  if(v <= 0) return 'qty-danger';
   // 後方互換: storeが渡されない古い呼び出し
   const thr = Math.ceil((item.min || 0) / Math.max(1, item.stores.length));
   if(v <= thr) return 'qty-warning';
@@ -2465,7 +2478,8 @@ function renderItemsByCategory(items, renderItem){
 
 // 補充判定: 店舗別の不足(getStoreShortage > 0)が1つでもあるか
 function itemNeedsRefill(item){
-  return item.stores.some(s => getStoreShortage(item, s) > 0);
+  // 補充一覧 = 要補充サインが出ている商品(サインと完全一致)
+  return anyStoreShort(item);
 }
 function renderRefill(){
   const c = document.getElementById('refill-items');
