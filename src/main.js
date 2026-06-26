@@ -3741,7 +3741,15 @@ async function submitModal(){
           ITEMS.splice(i, 1);
         }
       }
-      if(ITEMS.find(i => i.name === name)){ alert('同じ名前の商品が既に存在します'); return; }
+      // 残骸を除いてもまだ同名(アクティブ)が残る場合: 削除し切れていない古いデータの可能性があるため、
+      // ブロックせず「置き換えて登録し直す」かを確認する(既存IDを引き継ぐので在庫は保持される)
+      const _existing = ITEMS.find(i => i.name === name);
+      if(_existing){
+        if(!confirm(`「${name}」は既に登録されています。\n（削除し切れていない古いデータが残っている可能性があります）\n\n「OK」を押すと、この名前の既存データを置き換えて登録し直します。`)) return;
+        _reuseId = _existing.id || _existing.itemId || _reuseId;
+        // 同名のアクティブ記録もローカルから除去(複数残っていても1つにまとめる)
+        for(let i = ITEMS.length - 1; i >= 0; i--){ if(ITEMS[i].name === name) ITEMS.splice(i, 1); }
+      }
 
       const newItem = {
         name, category, unit,
@@ -3862,7 +3870,12 @@ async function submitModal(){
       renderApt(); renderLogs(); renderDashboard();
       toast(`✓ 「${name}」を更新しました`);
     }else{
-      if(aptStock.find(i => i.name === name)){ alert('同じ名前の商品が既に存在します'); return; }
+      // 同名のアパート在庫が残っている場合: ブロックせず「置き換えて登録し直す」かを確認
+      const _existApt = aptStock.find(i => i.name === name);
+      if(_existApt){
+        if(!confirm(`「${name}」は既にアパートに登録されています。\n（削除し切れていない古いデータが残っている可能性があります）\n\n「OK」を押すと、この名前の既存データを置き換えて登録し直します。`)) return;
+        for(let i = aptStock.length - 1; i >= 0; i--){ if(aptStock[i].name === name) aptStock.splice(i, 1); }
+      }
 
       const newAptItem = {
         name, category, unit,
