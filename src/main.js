@@ -1298,9 +1298,10 @@ function getStoreShortage(item, storeName){
   if(!item.stores.includes(storeName)) return 0;
   const current = storeStock[item.name]?.[storeName] ?? 0;
   const storeMin = getStoreMin(item, storeName);
-  // 最低在庫が 0(=最低設定なし)の場合は不足判定しない
-  if(storeMin <= 0) return 0;
-  return Math.max(0, storeMin - current);
+  if(storeMin > 0) return Math.max(0, storeMin - current);
+  // 最低在庫が未設定でも、在庫が0以下なら最低1つを補充対象にする
+  // (要補充サイン・補充一覧・アパートから補充ボタンの基準を一致させる)
+  return current <= 0 ? 1 : 0;
 }
 // 「要補充サイン」を出す唯一の基準(サイン・カード見出し・補充一覧・件数で共用し、必ず一致させる)
 // 在庫0、または その店の最低在庫を下回ったら要補充
