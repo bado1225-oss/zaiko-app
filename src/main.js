@@ -2600,6 +2600,49 @@ function getOrderLists(){
   });
   return { aptList, storeShortageList };
 }
+// ===== 未発注リマインド: ネット発注が必要なのに「発注済み」になっていない商品を、毎日1回知らせる =====
+// 「発注済み」を押すまで、翌日以降もアプリを開くたびに(1日1回)表示され続ける
+function getUnorderedNetItems(){
+  const { aptList, storeShortageList } = getOrderLists();
+  const rows = [];
+  aptList.forEach(item => {
+    if(!getOrderCheck('アパート発注', item.name)){
+      rows.push({ name:item.name, unit:item.unit, stock:item.stock ?? 0, supplier:item.supplier || '' });
+    }
+  });
+  storeShortageList.forEach(item => {
+    if(!getOrderCheck('店舗不足', item.name)){
+      rows.push({ name:item.name, unit:item.unit, stock:getTotal(item), supplier:item.supplier || '' });
+    }
+  });
+  return rows;
+}
+function maybeShowDailyOrderAlarm(){
+  try{
+    const rows = getUnorderedNetItems();
+    if(!rows.length) return;
+    const today = new Date().toLocaleDateString('ja-JP');   // 端末ごとに1日1回
+    if(localStorage.getItem('inv_order_alarm_date_v1') === today) return;
+    const body = document.getElementById('order-alarm-body');
+    if(!body) return;
+    body.innerHTML =
+      '<div class="small-note" style="margin-bottom:10px">以下の商品は発注が必要ですが、まだ「発注済み」になっていません。<br>発注済みにするまで、毎日お知らせします。</div>'
+      + rows.map(r =>
+        '<div class="transfer-confirm-row">'
+        + '<span class="transfer-confirm-store">' + escapeHtml(r.name) + (r.supplier ? '<span class="small-note">（' + escapeHtml(r.supplier) + '）</span>' : '') + '</span>'
+        + '<span class="transfer-confirm-qty">残り ' + r.stock + r.unit + '</span>'
+        + '</div>'
+      ).join('');
+    localStorage.setItem('inv_order_alarm_date_v1', today);
+    document.getElementById('order-alarm-overlay').classList.add('open');
+  }catch(e){
+    console.error('未発注リマインドの表示に失敗:', e);  // リマインドの失敗でアプリを止めない
+  }
+}
+function closeOrderAlarm(goToOrder){
+  document.getElementById('order-alarm-overlay').classList.remove('open');
+  if(goToOrder) showTab('order');
+}
 function renderOrder(){
   const c = document.getElementById('order-items');
   const { aptList, storeShortageList } = getOrderLists();
@@ -4084,6 +4127,8 @@ async function bootApp(){
   // 優先: Firebase 自動接続。失敗した場合のみ Supabase へフォールバック
   const ok = await tryAutoConnectFirebase();
   if(!ok) await tryAutoConnectSupabase();
+  // クラウド同期完了後の最新データで、未発注リマインドを判定(1日1回)
+  maybeShowDailyOrderAlarm();
 }
 bootApp();
 let pendingTransferEncodedName = null;

@@ -11,17 +11,17 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260618m">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260618m">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260618m">
-<link rel="manifest" href="manifest.webmanifest?v=20260618m">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png?v=20260618n">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260618n">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png?v=20260618n">
+<link rel="manifest" href="manifest.webmanifest?v=20260618n">
 <title>在庫管理アプリ</title>
-<link rel="stylesheet" href="src/style.css?v=20260618m">
+<link rel="stylesheet" href="src/style.css?v=20260618n">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<script src="src/firebase-adapter.js?v=20260618m"></script>
+<script src="src/firebase-adapter.js?v=20260618n"></script>
 </head>
 <body>
 <div class="app">
@@ -40,7 +40,7 @@
 
   <!-- Logo Section -->
   <div class="logo-section" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="トップへ">
-    <img src="icons/icon-512.png?v=20260618m" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
+    <img src="icons/icon-512.png?v=20260618n" alt="神楽坂 KAGURA-ZAKA" class="logo-img">
   </div>
 
   <div class="dashboard">
@@ -473,6 +473,18 @@
   </div>
 </div>
 
+<!-- 未発注リマインド(毎日1回、発注済みにするまで表示) -->
+<div class="modal-overlay" id="order-alarm-overlay">
+  <div class="modal">
+    <div class="modal-title">🔔 ネット発注がまだの商品があります</div>
+    <div id="order-alarm-body"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeOrderAlarm(false)">今日は閉じる</button>
+      <button class="modal-submit" onclick="closeOrderAlarm(true)">発注画面を開く</button>
+    </div>
+  </div>
+</div>
+
 <!-- Shopping Store Select Modal -->
 <div class="modal-overlay" id="shopping-store-select-overlay">
   <div class="modal">
@@ -522,6 +534,6 @@
   </div>
 </div>
 
-<script src="src/main.js?v=20260618m"></script>
+<script src="src/main.js?v=20260618n"></script>
 </body>
 </html>
