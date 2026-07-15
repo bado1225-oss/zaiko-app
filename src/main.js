@@ -634,14 +634,24 @@ async function reloadAllFromSupabase(){
   const targetMap = {};
   const thresholdMap = {};
   const locationMap = {};
-  const _seenTargetKey = new Set();
   const _dupTargetIds = [];   // 重複した item_store_targets の行ID(後でクラウドから削除)
+  // 同一 (item_id, store_code) が複数ある場合、「保管場所・最低/最大」等のデータを多く持つ行を残す。
+  // (読み込み順=実質ランダムで残すと、置き場入りの行が削除されて設定が消える事故になる)
+  const _targetRepByKey = {};
+  const _targetScore = t => (t.location ? 4 : 0) + (t.min_stock != null ? 2 : 0) + (t.max_stock != null ? 1 : 0);
   (targetsRes.data || []).forEach(t => {
-    const name = STORE_NAME_MAP[t.store_code];
-    // 同一 (item_id, store_code) が複数ある場合、2件目以降は重複としてマーク
     const key = `${t.item_id}__${t.store_code}`;
-    if(_seenTargetKey.has(key)){ if(t.id != null) _dupTargetIds.push(t.id); return; }
-    _seenTargetKey.add(key);
+    const prev = _targetRepByKey[key];
+    if(!prev){ _targetRepByKey[key] = t; return; }
+    if(_targetScore(t) > _targetScore(prev)){
+      if(prev.id != null) _dupTargetIds.push(prev.id);
+      _targetRepByKey[key] = t;
+    }else{
+      if(t.id != null) _dupTargetIds.push(t.id);
+    }
+  });
+  Object.values(_targetRepByKey).forEach(t => {
+    const name = STORE_NAME_MAP[t.store_code];
     if(!targetMap[t.item_id]) targetMap[t.item_id] = [];
     if(name && !targetMap[t.item_id].includes(name)) targetMap[t.item_id].push(name);
     if(name && (t.min_stock != null || t.max_stock != null)){

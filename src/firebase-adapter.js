@@ -156,11 +156,21 @@
         const data = sanitize(r);
         let docRef;
         // id か onConflict 列で既存検索
+        // onConflict は 'item_id,store_code' のような複合キーにも対応する。
+        // (以前は複合キーを1つの列名として扱って既存行を見つけられず、毎回新規の重複Docを
+        //  作ってしまい、reload時の重複掃除で location 等を持つ元の行が消える事故があった)
+        const _conflictCols = conflictCol
+          ? String(conflictCol).split(',').map(c => c.trim()).filter(Boolean)
+          : [];
+        const _allConflictValsPresent = _conflictCols.length > 0 &&
+          _conflictCols.every(c => data[c] !== undefined);
         if(data.id){
           docRef = _db.collection(table).doc(String(data.id));
           await docRef.set(data, { merge: true });
-        }else if(conflictCol && data[conflictCol] !== undefined){
-          const snap = await _db.collection(table).where(conflictCol, '==', data[conflictCol]).limit(1).get();
+        }else if(_allConflictValsPresent){
+          let q = _db.collection(table);
+          _conflictCols.forEach(c => { q = q.where(c, '==', data[c]); });
+          const snap = await q.limit(1).get();
           if(!snap.empty){
             docRef = snap.docs[0].ref;
             await docRef.set(data, { merge: true });
